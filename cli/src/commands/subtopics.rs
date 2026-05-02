@@ -1,3 +1,5 @@
+use serde_json::json;
+
 use crate::client::ApiClient;
 use crate::error::CliError;
 use crate::output;
@@ -18,6 +20,28 @@ pub async fn list(
     if let Some(t) = topic { params.push(format!("topic_id={}", urlenc(t))); }
     let qs = if params.is_empty() { String::new() } else { format!("?{}", params.join("&")) };
     let resp = client.get(&format!("{BASE}{qs}")).await?;
+    output::print_success(resp);
+    Ok(())
+}
+
+pub async fn inspect(id: &str) -> Result<(), CliError> {
+    let client = ApiClient::new()?;
+    let resp = client.get(&format!("{BASE}/{id}/relationships")).await?;
+    output::print_success(resp);
+    Ok(())
+}
+
+pub async fn move_to(id: &str, target_topic_id: &str) -> Result<(), CliError> {
+    let client = ApiClient::new()?;
+    let body = json!({ "target_topic_id": target_topic_id });
+    let resp = client.post(&format!("{BASE}/{id}/move"), &body).await?;
+    output::print_success(resp);
+    Ok(())
+}
+
+pub async fn archive(id: &str) -> Result<(), CliError> {
+    let client = ApiClient::new()?;
+    let resp = client.post(&format!("{BASE}/{id}/archive"), &json!({})).await?;
     output::print_success(resp);
     Ok(())
 }

@@ -39,27 +39,35 @@ enum Commands {
         #[command(subcommand)]
         command: AuthCmd,
     },
-    /// Browse OI topics
+    /// Browse and reorganize OI topics
     #[command(
         after_help = "Examples:
   internode topics list
   internode topics list --category 3 --search \"deployment\" --limit 20 --offset 0
+  internode topics inspect <topic_id>
+  internode topics update  <topic_id> --title \"Pricing\" --category 5
+  internode topics archive <topic_id>
+  internode topics merge   <source_topic_id> --into <target_topic_id>
 
 Tip:
-  Run 'internode topics list --help' for full filter details."
+  Run 'internode topics <subcommand> --help' for full argument details.
+  See cleanup workflow in 'internode-cli/SKILL.md'."
     )]
     Topics {
         #[command(subcommand)]
         command: TopicsCmd,
     },
-    /// Browse OI sub-topics (Ideas, Problems, Solutions, etc.)
+    /// Browse and reorganize OI sub-topics (Ideas, Problems, Solutions, etc.)
     #[command(
         after_help = "Examples:
   internode subtopics list
   internode subtopics list --type Idea --topic <topic_id> --limit 10
+  internode subtopics inspect <sub_topic_id>
+  internode subtopics move    <sub_topic_id> --to-topic <target_topic_id>
+  internode subtopics archive <sub_topic_id>
 
 Tip:
-  Run 'internode subtopics list --help' for full filter details."
+  Run 'internode subtopics <subcommand> --help' for full argument details."
     )]
     Subtopics {
         #[command(subcommand)]
@@ -80,25 +88,60 @@ Tips:
         #[command(subcommand)]
         command: TasksCmd,
     },
-    /// Browse OI decisions
+    /// Browse and reorganize OI decisions
     #[command(
         after_help = "Examples:
   internode decisions list
-  internode decisions list --search \"pricing model\" --limit 10"
+  internode decisions list --search \"pricing model\" --limit 10
+  internode decisions inspect <decision_id>
+  internode decisions update  <decision_id> --title \"Adopt usage-based pricing\"
+  internode decisions archive <decision_id>
+  internode decisions merge   <source_decision_id> --into <target_decision_id>
+  internode decisions link    <decision_id> --sub-topic <sub_topic_id> --type RATIFIES
+  internode decisions link    <decision_id> --intent <intent_id>
+  internode decisions link    <decision_id> --task <task_id_or_version_id> --type SPAWNS
+  internode decisions unlink  <decision_id> --sub-topic <sub_topic_id>
+  internode decisions unlink  <decision_id> --task <task_id_or_version_id> --type MODIFIES
+  internode decisions unlink  <decision_id> --intent <intent_id>
+
+Invariant:
+  Every live decision MUST keep ≥1 sub-topic edge AND ≥1 intent edge.
+  Unlinks that would drop either to zero are rejected (HTTP 422)."
     )]
     Decisions {
         #[command(subcommand)]
         command: DecisionsCmd,
     },
-    /// Browse OI intents
+    /// Browse and reorganize OI intents
     #[command(
         after_help = "Examples:
   internode intents list
-  internode intents list --limit 50 --offset 0"
+  internode intents list --limit 50 --offset 0
+  internode intents inspect <intent_id>
+  internode intents update  <intent_id> --title \"Increase ARR by 50%\" --signals \"ARR,growth\"
+  internode intents archive <intent_id>
+  internode intents merge   <source_intent_id> --into <target_intent_id>"
     )]
     Intents {
         #[command(subcommand)]
         command: IntentsCmd,
+    },
+    /// Diagnose V2 reconciliation noise (over-linked decisions, duplicate roots, etc.)
+    #[command(
+        after_help = "Examples:
+  internode diagnose decisions --by sub_topics --top 20
+  internode diagnose decisions --by tasks --min-edges 10
+  internode diagnose topics --by sub_topics --top 30
+  internode diagnose subtopics --min-edges 5
+  internode diagnose intents --min-edges 10
+
+Output is uncapped: each item carries the *real* edge count so the
+agent can see the noise (vs. 'entity get' which caps lists at 4).
+Use this BEFORE calling topics/subtopics/decisions/intents mutations."
+    )]
+    Diagnose {
+        #[command(subcommand)]
+        command: DiagnoseCmd,
     },
     /// Retrieve detailed entity information (knowledge molecules)
     #[command(
@@ -109,6 +152,7 @@ Tips:
 Notes:
   Use one or more entity IDs (max 20).
   Do not pass bracket syntax like ['id']; pass raw IDs as arguments.
+  For uncapped relationship dumps, use 'topics inspect', 'decisions inspect', etc.
 
 Tip:
   Run 'internode entity get --help' for ID argument details."
@@ -183,6 +227,37 @@ enum TopicsCmd {
         #[arg(long)]
         category: Option<i64>,
     },
+    /// Show uncapped relationship dump for one topic (sub-topics + incident decisions)
+    Inspect {
+        /// OITopic id
+        id: String,
+    },
+    /// Update topic root-level fields (title, description, category)
+    Update {
+        id: String,
+        #[arg(long)]
+        title: Option<String>,
+        #[arg(long)]
+        description: Option<String>,
+        /// Topic category index (1-11, see docs/USE_INTERNODE_CLI.md)
+        #[arg(long)]
+        category: Option<i64>,
+        /// Primary contributor email
+        #[arg(long = "primary-contributor")]
+        primary_contributor: Option<String>,
+    },
+    /// Soft-archive a topic (sets deleted=true; sub-topics get re-parented before this)
+    Archive {
+        id: String,
+    },
+    /// Merge a duplicate source topic into a target topic
+    Merge {
+        /// Source topic id (will be re-parented then archived)
+        source_id: String,
+        /// Target topic id (will absorb every sub-topic version)
+        #[arg(long = "into")]
+        target_id: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -199,6 +274,24 @@ enum SubtopicsCmd {
         limit: Option<i64>,
         #[arg(long)]
         offset: Option<i64>,
+    },
+    /// Show uncapped parent topic + every incoming decision edge for one sub-topic
+    Inspect {
+        /// OITopicVersion id
+        id: String,
+    },
+    /// Re-parent a sub-topic to a different OITopic root
+    Move {
+        /// OITopicVersion id
+        id: String,
+        /// Target OITopic id
+        #[arg(long = "to-topic")]
+        target_topic_id: String,
+    },
+    /// Soft-archive a single sub-topic version
+    Archive {
+        /// OITopicVersion id
+        id: String,
     },
 }
 
@@ -274,6 +367,73 @@ enum DecisionsCmd {
         #[arg(long)]
         offset: Option<i64>,
     },
+    /// Show uncapped relationship dump for one decision
+    Inspect {
+        /// OIDecision id
+        id: String,
+    },
+    /// Update decision scalar fields
+    Update {
+        id: String,
+        #[arg(long)]
+        title: Option<String>,
+        #[arg(long)]
+        description: Option<String>,
+        #[arg(long)]
+        rationale: Option<String>,
+        #[arg(long)]
+        status: Option<String>,
+        #[arg(long = "decision-maker")]
+        decision_maker: Option<String>,
+        /// Decision type (explicit | implicit)
+        #[arg(long = "type")]
+        decision_type: Option<String>,
+        #[arg(long)]
+        priority: Option<String>,
+    },
+    /// Soft-archive a decision
+    Archive {
+        id: String,
+    },
+    /// Merge a duplicate source decision into a target decision
+    Merge {
+        /// Source decision id (will be re-edged then archived)
+        source_id: String,
+        /// Target decision id (absorbs every sub-topic / task / intent edge)
+        #[arg(long = "into")]
+        target_id: String,
+    },
+    /// Add a single edge from this decision (sub-topic, task, or intent)
+    Link {
+        /// OIDecision id
+        id: String,
+        /// OITopicVersion id (kind=sub_topic)
+        #[arg(long = "sub-topic")]
+        sub_topic: Option<String>,
+        /// OITask id or OITaskVersion id (kind=task)
+        #[arg(long)]
+        task: Option<String>,
+        /// OIIntent id (kind=intent)
+        #[arg(long)]
+        intent: Option<String>,
+        /// Relationship type. RATIFIES|REJECTS|DEFERS for sub-topic, SPAWNS|BLOCKS|CANCELS|MODIFIES for task. Defaults: RATIFIES (sub-topic), SPAWNS (task). Ignored for intent.
+        #[arg(long = "type")]
+        rel_type: Option<String>,
+    },
+    /// Remove a single edge from this decision (blocked if it would violate the invariant)
+    Unlink {
+        /// OIDecision id
+        id: String,
+        #[arg(long = "sub-topic")]
+        sub_topic: Option<String>,
+        #[arg(long)]
+        task: Option<String>,
+        #[arg(long)]
+        intent: Option<String>,
+        /// Optional rel-type filter. If omitted, every matching edge of any valid type is removed.
+        #[arg(long = "type")]
+        rel_type: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -282,6 +442,85 @@ enum IntentsCmd {
     List {
         #[arg(long)]
         limit: Option<i64>,
+        #[arg(long)]
+        offset: Option<i64>,
+    },
+    /// Show uncapped supporting decisions for one intent
+    Inspect {
+        /// OIIntent id
+        id: String,
+    },
+    /// Update intent scalar fields
+    Update {
+        id: String,
+        #[arg(long)]
+        title: Option<String>,
+        #[arg(long)]
+        statement: Option<String>,
+        #[arg(long)]
+        scope: Option<String>,
+        /// Comma-separated list of signals (e.g. "ARR,churn,growth")
+        #[arg(long)]
+        signals: Option<String>,
+    },
+    /// Soft-archive an intent
+    Archive {
+        id: String,
+    },
+    /// Merge a duplicate source intent into a target intent
+    Merge {
+        /// Source intent id (will be re-supported then archived)
+        source_id: String,
+        /// Target intent id (absorbs every incoming SUPPORTS edge)
+        #[arg(long = "into")]
+        target_id: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum DiagnoseCmd {
+    /// Find OIDecisions with the most outgoing sub-topic / task / intent edges
+    Decisions {
+        /// Sort dimension: sub_topics (default) | tasks | intents
+        #[arg(long = "by")]
+        by: Option<String>,
+        /// Top N rows to return (default 20, max 200)
+        #[arg(long)]
+        top: Option<i64>,
+        /// Only include rows with at least this many total edges
+        #[arg(long = "min-edges")]
+        min_edges: Option<i64>,
+        /// Skip the first N rows for paging
+        #[arg(long)]
+        offset: Option<i64>,
+    },
+    /// Find OITopics with the most sub-topic versions or incident decisions
+    Topics {
+        /// Sort dimension: sub_topics (default) | decisions
+        #[arg(long = "by")]
+        by: Option<String>,
+        #[arg(long)]
+        top: Option<i64>,
+        #[arg(long = "min-edges")]
+        min_edges: Option<i64>,
+        #[arg(long)]
+        offset: Option<i64>,
+    },
+    /// Find OITopicVersion sub-topics with the most incoming decision edges
+    Subtopics {
+        #[arg(long)]
+        top: Option<i64>,
+        #[arg(long = "min-edges")]
+        min_edges: Option<i64>,
+        #[arg(long)]
+        offset: Option<i64>,
+    },
+    /// Find OIIntents with the most supporting decisions (SUPPORTS fan-in)
+    Intents {
+        #[arg(long)]
+        top: Option<i64>,
+        #[arg(long = "min-edges")]
+        min_edges: Option<i64>,
         #[arg(long)]
         offset: Option<i64>,
     },
@@ -345,11 +584,31 @@ async fn run(cli: Cli) -> Result<(), CliError> {
             TopicsCmd::List { limit, offset, search, category } => {
                 commands::topics::list(limit, offset, search.as_deref(), category).await
             }
+            TopicsCmd::Inspect { id } => commands::topics::inspect(&id).await,
+            TopicsCmd::Update { id, title, description, category, primary_contributor } => {
+                commands::topics::update(
+                    &id,
+                    title.as_deref(),
+                    description.as_deref(),
+                    category,
+                    primary_contributor.as_deref(),
+                )
+                .await
+            }
+            TopicsCmd::Archive { id } => commands::topics::archive(&id).await,
+            TopicsCmd::Merge { source_id, target_id } => {
+                commands::topics::merge(&source_id, &target_id).await
+            }
         },
         Commands::Subtopics { command } => match command {
             SubtopicsCmd::List { type_filter, topic, limit, offset } => {
                 commands::subtopics::list(type_filter.as_deref(), topic.as_deref(), limit, offset).await
             }
+            SubtopicsCmd::Inspect { id } => commands::subtopics::inspect(&id).await,
+            SubtopicsCmd::Move { id, target_topic_id } => {
+                commands::subtopics::move_to(&id, &target_topic_id).await
+            }
+            SubtopicsCmd::Archive { id } => commands::subtopics::archive(&id).await,
         },
         Commands::Tasks { command } => match command {
             TasksCmd::List { team, project, status, assignee, priority, search, topic, intent, topic_category, limit, offset } => {
@@ -373,10 +632,86 @@ async fn run(cli: Cli) -> Result<(), CliError> {
             DecisionsCmd::List { search, limit, offset } => {
                 commands::decisions::list(search.as_deref(), limit, offset).await
             }
+            DecisionsCmd::Inspect { id } => commands::decisions::inspect(&id).await,
+            DecisionsCmd::Update {
+                id,
+                title,
+                description,
+                rationale,
+                status,
+                decision_maker,
+                decision_type,
+                priority,
+            } => {
+                commands::decisions::update(
+                    &id,
+                    title.as_deref(),
+                    description.as_deref(),
+                    rationale.as_deref(),
+                    status.as_deref(),
+                    decision_maker.as_deref(),
+                    decision_type.as_deref(),
+                    priority.as_deref(),
+                )
+                .await
+            }
+            DecisionsCmd::Archive { id } => commands::decisions::archive(&id).await,
+            DecisionsCmd::Merge { source_id, target_id } => {
+                commands::decisions::merge(&source_id, &target_id).await
+            }
+            DecisionsCmd::Link { id, sub_topic, task, intent, rel_type } => {
+                commands::decisions::link(
+                    &id,
+                    sub_topic.as_deref(),
+                    task.as_deref(),
+                    intent.as_deref(),
+                    rel_type.as_deref(),
+                )
+                .await
+            }
+            DecisionsCmd::Unlink { id, sub_topic, task, intent, rel_type } => {
+                commands::decisions::unlink(
+                    &id,
+                    sub_topic.as_deref(),
+                    task.as_deref(),
+                    intent.as_deref(),
+                    rel_type.as_deref(),
+                )
+                .await
+            }
         },
         Commands::Intents { command } => match command {
             IntentsCmd::List { limit, offset } => {
                 commands::intents::list(limit, offset).await
+            }
+            IntentsCmd::Inspect { id } => commands::intents::inspect(&id).await,
+            IntentsCmd::Update { id, title, statement, scope, signals } => {
+                commands::intents::update(
+                    &id,
+                    title.as_deref(),
+                    statement.as_deref(),
+                    scope.as_deref(),
+                    signals.as_deref(),
+                )
+                .await
+            }
+            IntentsCmd::Archive { id } => commands::intents::archive(&id).await,
+            IntentsCmd::Merge { source_id, target_id } => {
+                commands::intents::merge(&source_id, &target_id).await
+            }
+        },
+        Commands::Diagnose { command } => match command {
+            DiagnoseCmd::Decisions { by, top, min_edges, offset } => {
+                commands::diagnose::decisions(by.as_deref(), top, min_edges, offset).await
+            }
+            DiagnoseCmd::Topics { by, top, min_edges, offset } => {
+                commands::diagnose::topics(by.as_deref(), top, min_edges, offset).await
+            }
+            DiagnoseCmd::Subtopics { top, min_edges, offset } => {
+                commands::diagnose::subtopics(top, min_edges, offset).await
+            }
+            DiagnoseCmd::Intents { top, min_edges, offset } => {
+                commands::diagnose::intents(top, min_edges, offset).await
             }
         },
         Commands::Entity { command } => match command {

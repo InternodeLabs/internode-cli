@@ -61,7 +61,7 @@ curl -fsSL https://raw.githubusercontent.com/istvanspace/internode-cli/main/SKIL
 internode configure ink_your_api_key_here
 ```
 
-5. Verify:
+1. Verify:
 
 ```bash
 internode auth status
@@ -69,14 +69,19 @@ internode auth status
 
 ## Permissions Model
 
-| Action | Allowed |
-|--------|---------|
-| Read / list all entities | Yes |
-| Update task properties | Yes |
-| Create projects | Yes |
-| Create other entities | No |
-| Update non-task entities | No |
-| Delete any entity | No |
+
+| Action                                                        | Allowed              |
+| ------------------------------------------------------------- | -------------------- |
+| Read / list all entities                                      | Yes                  |
+| Diagnose V2 reconciliation noise (uncapped edge counts)       | Yes                  |
+| Update task scalar properties                                 | Yes                  |
+| Update topic / sub-topic / decision / intent scalar properties | Yes                  |
+| Create projects                                               | Yes                  |
+| Create other entities                                         | No                   |
+| Re-parent sub-topics, link/unlink decision edges, merge roots | Yes (subject to V3 invariant) |
+| Soft-archive (sets `deleted=true`) topics / sub-topics / decisions / intents | Yes |
+| Hard delete any entity                                        | No                   |
+
 
 ## Usage
 
@@ -87,6 +92,10 @@ All commands output structured JSON on stdout. Diagnostics go to stderr.
 ```bash
 internode topics list
 internode topics list --search "authentication" --category 2 --limit 20
+internode topics inspect <topic_id>                                  # uncapped relationship dump
+internode topics update  <topic_id> --title "..." --category 5
+internode topics archive <topic_id>                                  # soft-delete
+internode topics merge   <source_topic_id> --into <target_topic_id>  # absorb every sub-topic, then archive source
 ```
 
 ### Sub-topics
@@ -95,6 +104,9 @@ internode topics list --search "authentication" --category 2 --limit 20
 internode subtopics list
 internode subtopics list --type Idea --topic <topic_id>
 internode subtopics list --type Problem --limit 10
+internode subtopics inspect <sub_topic_id>
+internode subtopics move    <sub_topic_id> --to-topic <target_topic_id>
+internode subtopics archive <sub_topic_id>
 ```
 
 ### Tasks
@@ -115,14 +127,61 @@ internode tasks update <id> --user-notes "Blocked on review" --type action_item
 ```bash
 internode decisions list
 internode decisions list --search "pricing model" --limit 10
+internode decisions inspect <decision_id>
+internode decisions update  <decision_id> --title "..." --rationale "..." --status "approved"
+internode decisions archive <decision_id>
+internode decisions merge   <source_decision_id> --into <target_decision_id>
+
+# Edge link/unlink — pass exactly one of --sub-topic, --task, --intent
+internode decisions link   <decision_id> --sub-topic <sid> --type RATIFIES
+internode decisions link   <decision_id> --task <task_id> --type SPAWNS
+internode decisions link   <decision_id> --intent <intent_id>
+
+internode decisions unlink <decision_id> --sub-topic <sid>
+internode decisions unlink <decision_id> --intent <intent_id>
 ```
+
+> **Invariant:** every live decision must keep ≥1 sub-topic edge AND ≥1 intent edge. `unlink` calls that would violate this return HTTP 422 — add a replacement edge or `archive` the decision instead.
 
 ### Intents
 
 ```bash
 internode intents list
 internode intents list --limit 50
+internode intents inspect <intent_id>
+internode intents update  <intent_id> --title "..." --signals "ARR,growth"
+internode intents archive <intent_id>
+internode intents merge   <source_intent_id> --into <target_intent_id>
 ```
+
+### Diagnose V2 reconciliation noise
+
+```bash
+internode diagnose decisions --by sub_topics --top 20
+internode diagnose decisions --by tasks --min-edges 10
+internode diagnose topics    --by sub_topics --top 30
+internode diagnose subtopics --min-edges 5
+internode diagnose intents   --min-edges 10
+```
+
+Diagnostic output is uncapped — each item carries the **real** edge count so you can see noise that `entity get` (capped at 4) hides. Combine with `<entity> inspect <id>` for a full edge dump on the worst offenders.
+
+#### Cleanup workflow
+
+```text
+diagnose  →  inspect  →  mutate  →  diagnose
+```
+
+| Symptom                                         | Right primitive                                                               |
+| ----------------------------------------------- | ----------------------------------------------------------------------------- |
+| Sub-topic on the wrong topic root               | `subtopics move <sub_id> --to-topic <correct_topic_id>`                       |
+| Two `OITopic` roots about the same subject      | `topics merge <duplicate_id> --into <canonical_id>`                           |
+| Two `OIIntent` roots about the same goal        | `intents merge <duplicate_id> --into <canonical_id>`                          |
+| Two `OIDecision` roots about the same choice    | `decisions merge <duplicate_id> --into <canonical_id>`                        |
+| Decision↔sub-topic linked with the wrong rel-type | `decisions unlink <did> --sub-topic <stid> --type WRONG` → `link ... --type RIGHT` |
+| Decision linked to an unrelated sub-topic       | `decisions unlink <did> --sub-topic <stid>` (422 if it's the last one)        |
+| Decision is over-linked beyond saving           | `decisions archive <did>`                                                     |
+| Sub-topic conclusion text is wrong              | `subtopics archive <sub_id>` (versions are append-only — never edit in place) |
 
 ### Entity Details
 
@@ -160,7 +219,7 @@ internode context --max-tokens 4000
 Config file: `~/.config/internode/config.toml`
 
 ```toml
-api_url = "https://api.internode.ai"
+api_url = "https://agents.api.internode.ai"
 api_key = "ink_..."
 ```
 
@@ -180,17 +239,21 @@ Errors:
 
 ## Exit Codes
 
-| Code | Meaning |
-|------|---------|
-| 0 | Success |
-| 1 | Bad input |
-| 2 | Auth error |
-| 3 | Server error |
-| 4 | Network error |
+
+| Code | Meaning       |
+| ---- | ------------- |
+| 0    | Success       |
+| 1    | Bad input     |
+| 2    | Auth error    |
+| 3    | Server error  |
+| 4    | Network error |
+
 
 ## Release
 
 GitHub Actions cross-compiles on tag push:
+
 - Linux AMD64
 - macOS ARM64 (Apple Silicon)
 - Windows x64
+

@@ -44,14 +44,16 @@ Human-readable messages go to stderr. **Always parse stdout JSON, ignore stderr.
 
 ## Permissions Model
 
-The CLI is **read-heavy with limited writes**:
+The CLI is **read-heavy with structural-cleanup writes**:
 
 - **Read all**: topics, sub-topics, tasks, decisions, intents, teams, projects, statuses
-- **Update**: task properties only (title, description, priority, assignee, due date, status, team, project, type, user-notes, blocked-by-reason)
+- **Diagnose** V2 reconciliation noise (uncapped edge counts) for decisions, topics, sub-topics, intents
+- **Update scalar fields** on tasks **and** topics, sub-topics-via-move, decisions, intents
+- **Reorganize edges**: move sub-topics between topics, link/unlink decision edges (sub-topic, task, intent), merge duplicate roots
+- **Soft-archive** topics, sub-topics, decisions, intents (sets `deleted=true`; never hard-delete)
 - **Create**: projects only
-- **No delete/archive** via CLI
 
-All other entity creation and mutation must be done through the web portal or agent conversations.
+> **Hard delete is never available.** Every "archive" / "merge source" sets `deleted=true` so history stays traversable.
 
 ## Recommended Workflow
 
@@ -82,6 +84,8 @@ All other entity creation and mutation must be done through the web portal or ag
    ```bash
    internode tasks update <id> --status <status-id> --assignee "user@example.com"
    ```
+
+6. **Clean up V2 noise** — see the "Cleaning up V2 reconciliation noise" section below for the diagnose → inspect → mutate loop.
 
 ## Entity Types
 
@@ -147,8 +151,6 @@ internode statuses list [--team ID]
 
 ### Task Update
 
-Tasks are the only entity that can be mutated via the CLI.
-
 ```bash
 internode tasks update <id> [--title "..."] [--description "..."] [--priority "..."] [--assignee "email"] [--due-date "YYYY-MM-DD"] [--status ID] [--type "..."] [--team ID] [--project ID] [--user-notes "..."] [--blocked-by-reason "..."]
 ```
@@ -162,6 +164,173 @@ internode projects create --name "..." --team <team-id> [--key "..."] [--descrip
 ```
 
 A project always belongs to a team (`--team` is required on create).
+
+### Diagnostics (uncapped — find the noise)
+
+`internode diagnose` returns the **real** edge counts so you can see V2 reconciliation noise. Unlike `entity get` (which caps related-entity lists at 4), the diagnostic endpoints are uncapped.
+
+```bash
+internode diagnose decisions [--by sub_topics|tasks|intents] [--top N] [--min-edges N] [--offset N]
+# OIDecisions ranked by outgoing sub-topic / task / intent edges. Default --by sub_topics.
+
+internode diagnose topics    [--by sub_topics|decisions]      [--top N] [--min-edges N] [--offset N]
+# OITopic roots ranked by sub-topic count and the number of distinct decisions touching any sub-topic.
+
+internode diagnose subtopics                                  [--top N] [--min-edges N] [--offset N]
+# OITopicVersion sub-topics ranked by incoming decision-edge count.
+
+internode diagnose intents                                    [--top N] [--min-edges N] [--offset N]
+# OIIntents ranked by incoming SUPPORTS edge count from decisions.
+```
+
+### Inspecting a single entity (uncapped relationship dump)
+
+`<entity> inspect <id>` returns the **full**, uncapped neighborhood for one root — every sub-topic, task, intent, or decision edge. Use this to plan a move/merge/unlink.
+
+```bash
+internode topics inspect    <topic_id>          # parent, sub-topic versions, decision links per sub-topic
+internode subtopics inspect <sub_topic_id>      # parent topic + every incoming decision edge
+internode decisions inspect <decision_id>       # every sub-topic, intent, and task edge
+internode intents inspect   <intent_id>         # every supporting decision
+```
+
+### Topic mutations
+
+```bash
+internode topics update  <id> [--title "..."] [--description "..."] [--category 1..11] [--primary-contributor "email"]
+internode topics archive <id>                                # soft-delete root + all versions
+internode topics merge   <source_id> --into <target_id>      # re-parent every sub-topic version, then archive source
+```
+
+### Sub-topic mutations
+
+```bash
+internode subtopics move    <sub_topic_id> --to-topic <target_topic_id>
+internode subtopics archive <sub_topic_id>
+```
+
+`move` atomically swaps `HAS_VERSION` so the version is owned by exactly one topic. The version's conclusion text (and embedding) is untouched.
+
+### Decision mutations
+
+```bash
+internode decisions update  <id> [--title ...] [--description ...] [--rationale ...] [--status ...] [--decision-maker email] [--type explicit|implicit] [--priority ...]
+internode decisions archive <id>
+internode decisions merge   <source_id> --into <target_id>     # re-parent every sub-topic / task / intent edge, then archive source
+
+# Edge link/unlink — pass exactly one of --sub-topic, --task, --intent
+internode decisions link   <id> --sub-topic <stid> [--type RATIFIES|REJECTS|DEFERS]
+internode decisions link   <id> --task <task_or_version_id> [--type SPAWNS|BLOCKS|CANCELS|MODIFIES]
+internode decisions link   <id> --intent <intent_id>
+
+internode decisions unlink <id> --sub-topic <stid> [--type RATIFIES|REJECTS|DEFERS]
+internode decisions unlink <id> --task <task_or_version_id> [--type SPAWNS|BLOCKS|CANCELS|MODIFIES]
+internode decisions unlink <id> --intent <intent_id>
+```
+
+> **Decision invariant (HTTP 422 on violation):** Every live OIDecision MUST keep ≥1 sub-topic edge AND ≥1 intent edge. If `unlink` would drop either to zero, it's blocked with a structured 422 response. The agent must add a replacement edge first, or call `merge` / `archive` to retire the decision explicitly.
+
+> **`link --task` SPAWNS guard:** The backend reuses the V3 `_safe_link_decision_to_task_version` helper, so SPAWNS is auto-downgraded to MODIFIES when the target isn't the first task version, and BLOCKS/CANCELS/MODIFIES is auto-upgraded to SPAWNS when the target is a first version with no SPAWNS yet. The response carries a `note` field when this happens.
+
+### Intent mutations
+
+```bash
+internode intents update  <id> [--title ...] [--statement ...] [--scope ...] [--signals "a,b,c"]
+internode intents archive <id>
+internode intents merge   <source_id> --into <target_id>      # re-parent every incoming SUPPORTS edge, then archive source
+```
+
+## Cleaning up V2 reconciliation noise
+
+V2 reconciliation produced two recurring defects you may need to clean up before V3 takes over:
+
+1. **Sub-topic noise under topics** — `OITopicVersion` nodes attached to the wrong `OITopic` root, plus duplicate roots about the same subject.
+2. **Over-linked decisions** — single `OIDecision` roots carrying a very large fan-out of `RATIFIES|REJECTS|DEFERS` edges (and matching noise on `SUPPORTS` edges to intents).
+
+### Decision invariant — read this first
+
+Every live `OIDecision` must keep:
+
+- **≥1 sub-topic edge** (`RATIFIES`, `REJECTS`, or `DEFERS` to an `OITopicVersion`)
+- **≥1 intent edge** (`SUPPORTS` to an `OIIntent`)
+
+If you try to `unlink` an edge whose removal would drop either count to zero, the backend returns **HTTP 422** with a structured error and refuses the change. To make progress in that case, **first add a replacement edge** (`link`), or call `decisions merge` to fold this decision into another, or `decisions archive` to retire it.
+
+### Workflow loop
+
+```text
+diagnose  →  inspect  →  mutate  →  diagnose
+```
+
+1. **`diagnose`** to find outliers (uncapped counts).
+2. **`inspect`** the worst offenders to see every edge.
+3. **`mutate`** with the appropriate primitive (`move` / `merge` / `link` / `unlink` / `archive`).
+4. **`diagnose`** again to confirm the count came down.
+
+### Decision tree: move vs merge vs archive vs unlink
+
+| Symptom | Right primitive |
+|---|---|
+| Sub-topic attached to the wrong topic root | `subtopics move <sub_id> --to-topic <correct_topic_id>` |
+| Two `OITopic` roots about the same subject | `topics merge <duplicate_id> --into <canonical_id>` |
+| Two `OIIntent` roots about the same goal | `intents merge <duplicate_id> --into <canonical_id>` |
+| Two `OIDecision` roots about the same choice | `decisions merge <duplicate_id> --into <canonical_id>` |
+| Decision is correctly linked to a sub-topic but with the wrong rel-type | `decisions unlink <did> --sub-topic <stid> --type WRONG` then `decisions link <did> --sub-topic <stid> --type RIGHT` |
+| Decision linked to a sub-topic that doesn't actually relate to it | `decisions unlink <did> --sub-topic <stid>` (blocked with 422 if it's the last sub-topic) |
+| Decision is genuinely wrong / over-linked beyond saving | `decisions archive <did>` |
+| Sub-topic conclusion text is wrong | `subtopics archive <sub_id>` and let the chat layer / next transcript create a corrected one (sub-topic versions are append-only — never edit the conclusion in place) |
+
+### Worked examples
+
+**Find and inspect the worst over-linked decision**
+
+```bash
+internode diagnose decisions --by sub_topics --top 5
+# → pick the worst id, e.g. oidecision_abc
+
+internode decisions inspect oidecision_abc
+# → shows every sub-topic, intent, task edge with parent topics
+```
+
+**Re-parent a mis-attached sub-topic**
+
+```bash
+internode subtopics inspect oitopicv_xyz
+# → parent_topic_id is wrong
+
+internode subtopics move oitopicv_xyz --to-topic oitopic_correct
+```
+
+**Merge two duplicate topics**
+
+```bash
+internode diagnose topics --by sub_topics --top 50
+# → spot the duplicates by title
+
+internode topics merge oitopic_dup --into oitopic_canonical
+# → moves every sub-topic version, then archives oitopic_dup
+```
+
+**Unlink a noisy decision↔sub-topic edge (with invariant check)**
+
+```bash
+internode decisions inspect oidecision_abc
+# → confirm there are still other sub-topic + intent edges
+
+internode decisions unlink oidecision_abc --sub-topic oitopicv_noise --type RATIFIES
+# → if this would leave 0 sub-topic edges, you'll get 422 — add a replacement first or archive the decision
+```
+
+**Resolve a 422 when the only sub-topic edge is wrong**
+
+```bash
+# Option A: link the correct sub-topic, THEN unlink the wrong one
+internode decisions link   oidecision_abc --sub-topic oitopicv_correct --type RATIFIES
+internode decisions unlink oidecision_abc --sub-topic oitopicv_wrong   --type RATIFIES
+
+# Option B: archive the decision entirely
+internode decisions archive oidecision_abc
+```
 
 ## Key Patterns
 

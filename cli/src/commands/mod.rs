@@ -1,6 +1,7 @@
 pub mod auth;
 pub mod context;
 pub mod decisions;
+pub mod diagnose;
 pub mod entity;
 pub mod intents;
 pub mod projects;
