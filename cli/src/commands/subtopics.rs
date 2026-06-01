@@ -1,4 +1,4 @@
-use serde_json::json;
+use serde_json::{json, Value};
 
 use crate::client::ApiClient;
 use crate::error::CliError;
@@ -42,6 +42,28 @@ pub async fn move_to(id: &str, target_topic_id: &str) -> Result<(), CliError> {
 pub async fn archive(id: &str) -> Result<(), CliError> {
     let client = ApiClient::new()?;
     let resp = client.post(&format!("{BASE}/{id}/archive"), &json!({})).await?;
+    output::print_success(resp);
+    Ok(())
+}
+
+pub async fn update(
+    id: &str,
+    conclusion: Option<&str>,
+    conclusion_type: Option<&str>,
+    primary_contributor: Option<&str>,
+) -> Result<(), CliError> {
+    let client = ApiClient::new()?;
+    let mut body = json!({});
+    if let Some(c) = conclusion {
+        body["topic_conclusion"] = Value::String(c.to_string());
+    }
+    if let Some(t) = conclusion_type {
+        body["topic_conclusion_type"] = Value::String(t.to_string());
+    }
+    if let Some(e) = primary_contributor {
+        body["primary_contributor_email"] = Value::String(e.to_string());
+    }
+    let resp = client.patch(&format!("{BASE}/{id}"), &body).await?;
     output::print_success(resp);
     Ok(())
 }

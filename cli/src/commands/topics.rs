@@ -56,6 +56,40 @@ pub async fn archive(id: &str) -> Result<(), CliError> {
     Ok(())
 }
 
+pub async fn split(
+    source_id: &str,
+    splits_file: &str,
+    archive_source: bool,
+    dry_run: bool,
+) -> Result<(), CliError> {
+    // ``splits_file`` is a path to a JSON file containing the array of
+    // split entries.  Loading from disk keeps the command shell-friendly
+    // even when the split has many version ids — typing them as flag
+    // values gets unwieldy fast.
+    let raw = std::fs::read_to_string(splits_file).map_err(|e| {
+        CliError::BadInput(format!("Failed to read splits file '{splits_file}': {e}"))
+    })?;
+    let splits: Value = serde_json::from_str(&raw).map_err(|e| {
+        CliError::BadInput(format!("Splits file is not valid JSON: {e}"))
+    })?;
+    if !splits.is_array() {
+        return Err(CliError::BadInput(
+            "Splits file must contain a JSON array of entries.".into(),
+        ));
+    }
+    let body = json!({
+        "splits": splits,
+        "archive_source": archive_source,
+        "dry_run": dry_run,
+    });
+    let client = ApiClient::new()?;
+    let resp = client
+        .post(&format!("{BASE}/{source_id}/split"), &body)
+        .await?;
+    output::print_success(resp);
+    Ok(())
+}
+
 pub async fn merge(source_id: &str, target_id: &str) -> Result<(), CliError> {
     let client = ApiClient::new()?;
     let body = json!({ "target_topic_id": target_id });

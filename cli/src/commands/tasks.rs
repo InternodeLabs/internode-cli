@@ -38,6 +38,7 @@ pub async fn list(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn update(
     id: &str,
     title: Option<&str>,
@@ -51,6 +52,8 @@ pub async fn update(
     user_notes: Option<&str>,
     blocked_by_reason: Option<&str>,
     task_type: Option<&str>,
+    parent: Option<&str>,
+    clear_parent: bool,
 ) -> Result<(), CliError> {
     let client = ApiClient::new()?;
     let mut body = json!({});
@@ -65,7 +68,34 @@ pub async fn update(
     if let Some(n) = user_notes { body["user_notes"] = Value::String(n.to_string()); }
     if let Some(b) = blocked_by_reason { body["blocked_by_reason"] = Value::String(b.to_string()); }
     if let Some(tt) = task_type { body["task_type"] = Value::String(tt.to_string()); }
+    // HAS_SUBTASK re-parenting: --clear-parent detaches (empty string), else
+    // --parent re-parents. They are mutually exclusive.
+    if clear_parent {
+        if parent.is_some() {
+            return Err(CliError::BadInput(
+                "Pass either --parent or --clear-parent, not both.".into(),
+            ));
+        }
+        body["oiparent_task_id"] = Value::String(String::new());
+    } else if let Some(p) = parent {
+        body["oiparent_task_id"] = Value::String(p.to_string());
+    }
     let resp = client.patch(&format!("{BASE}/{id}"), &body).await?;
+    output::print_success(resp);
+    Ok(())
+}
+
+pub async fn archive(id: &str) -> Result<(), CliError> {
+    let client = ApiClient::new()?;
+    let resp = client.post(&format!("{BASE}/{id}/archive"), &json!({})).await?;
+    output::print_success(resp);
+    Ok(())
+}
+
+pub async fn merge(source_id: &str, target_id: &str) -> Result<(), CliError> {
+    let client = ApiClient::new()?;
+    let body = json!({ "target_task_id": target_id });
+    let resp = client.post(&format!("{BASE}/{source_id}/merge"), &body).await?;
     output::print_success(resp);
     Ok(())
 }

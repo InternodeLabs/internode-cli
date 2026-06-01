@@ -18,8 +18,12 @@ impl ApiClient {
     }
 
     pub fn from_config(config: Config) -> Result<Self, CliError> {
+        // 15-minute hard cap so `embeddings sync --timeout 900` can still
+        // round-trip; the server-side timeout (default 120s, max 900s) is the
+        // real bound — this just makes sure the client doesn't drop the
+        // connection before the server has finished.
         let http = Client::builder()
-            .timeout(std::time::Duration::from_secs(45))
+            .timeout(std::time::Duration::from_secs(900))
             .build()
             .map_err(|e| CliError::Internal(format!("HTTP client init: {e}")))?;
         Ok(Self {

@@ -69,6 +69,30 @@ pub async fn intents(
     run("intents", None, top, min_edges, offset).await
 }
 
+/// Read-only: list single-lineage roots (OIDecision/OIIntent/OITask) whose
+/// version chain has forked into multiple heads.
+pub async fn version_chains(
+    labels: Option<&str>,
+    limit: Option<i64>,
+) -> Result<(), CliError> {
+    let client = ApiClient::new()?;
+    let mut params = vec![];
+    if let Some(l) = labels {
+        params.push(format!("labels={}", urlenc(l)));
+    }
+    if let Some(n) = limit {
+        params.push(format!("limit={n}"));
+    }
+    let qs = if params.is_empty() {
+        String::new()
+    } else {
+        format!("?{}", params.join("&"))
+    };
+    let resp = client.get(&format!("{BASE}/version-chains{qs}")).await?;
+    output::print_success(resp);
+    Ok(())
+}
+
 fn urlenc(s: &str) -> String {
     url::form_urlencoded::byte_serialize(s.as_bytes()).collect()
 }

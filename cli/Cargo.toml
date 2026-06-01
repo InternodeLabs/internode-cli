@@ -18,6 +18,10 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 dirs = "6"
 toml = "0.8"
 url = "2"
+# Interactive passphrase prompt (Cypher runner) — never echoes the value.
+rpassword = "7"
+# SHA-256 hashing for client-side file binding sent with /cypher/run.
+sha2 = "0.10"
 
 [profile.release]
 strip = true

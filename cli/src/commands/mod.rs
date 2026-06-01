@@ -1,10 +1,13 @@
 pub mod auth;
 pub mod context;
+pub mod cypher;
 pub mod decisions;
 pub mod diagnose;
+pub mod embeddings;
 pub mod entity;
 pub mod intents;
 pub mod projects;
+pub mod repair;
 pub mod search;
 pub mod statuses;
 pub mod subtopics;

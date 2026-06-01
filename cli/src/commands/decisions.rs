@@ -96,6 +96,70 @@ pub async fn unlink(
     Ok(())
 }
 
+pub async fn split(
+    source_id: &str,
+    splits_file: &str,
+    archive_source: bool,
+    dry_run: bool,
+) -> Result<(), CliError> {
+    let raw = std::fs::read_to_string(splits_file).map_err(|e| {
+        CliError::BadInput(format!("Failed to read splits file '{splits_file}': {e}"))
+    })?;
+    let splits: Value = serde_json::from_str(&raw).map_err(|e| {
+        CliError::BadInput(format!("Splits file is not valid JSON: {e}"))
+    })?;
+    if !splits.is_array() {
+        return Err(CliError::BadInput(
+            "Splits file must contain a JSON array of entries.".into(),
+        ));
+    }
+    let body = json!({
+        "splits": splits,
+        "archive_source": archive_source,
+        "dry_run": dry_run,
+    });
+    let client = ApiClient::new()?;
+    let resp = client
+        .post(&format!("{BASE}/{source_id}/split"), &body)
+        .await?;
+    output::print_success(resp);
+    Ok(())
+}
+
+pub async fn normalize_edges(
+    decision_id: Option<&str>,
+    sub_topic_prefer: &[String],
+    task_prefer: &[String],
+    dry_run: bool,
+) -> Result<(), CliError> {
+    let mut body = json!({ "dry_run": dry_run });
+    if let Some(d) = decision_id {
+        body["decision_id"] = Value::String(d.to_string());
+    }
+    if !sub_topic_prefer.is_empty() {
+        body["sub_topic_prefer"] = Value::Array(
+            sub_topic_prefer
+                .iter()
+                .map(|s| Value::String(s.clone()))
+                .collect(),
+        );
+    }
+    if !task_prefer.is_empty() {
+        body["task_prefer"] = Value::Array(
+            task_prefer
+                .iter()
+                .map(|s| Value::String(s.clone()))
+                .collect(),
+        );
+    }
+    let client = ApiClient::new()?;
+    let resp = client
+        .post(&format!("{BASE}/normalize-edges"), &body)
+        .await?;
+    output::print_success(resp);
+    Ok(())
+}
+
 fn build_edge_body(
     sub_topic: Option<&str>,
     task: Option<&str>,
