@@ -1,11 +1,11 @@
 ---
 name: use-internode-cli
-description: Interface with Internode Organizational Intelligence (OI) via the internode CLI. Use when the user asks to read, update tasks, search, or browse knowledge entities (topics, sub-topics, tasks, decisions, intents, teams, projects, statuses), or when bootstrapping context for a work session.
+description: Interface with Internode Organizational Intelligence (OI) via the internode CLI. Use when the user asks to read, browse, search, update, reorganize, clean up, or repair knowledge entities (topics, sub-topics, tasks, decisions, intents, teams, projects, statuses), recover soft-deleted entities, re-align embeddings, or run gated Cypher — or when bootstrapping context for a work session.
 ---
 
 # Using the Internode CLI
 
-The `internode` CLI is your interface to a user's **Organizational Intelligence (OI)** — a persistent knowledge graph of topics, sub-topics, tasks, decisions, intents, teams, projects, and statuses. Use it as long-term memory: read context before starting work, browse entities, update task properties, and search the knowledge graph.
+The `internode` CLI is your interface to a user's **Organizational Intelligence (OI)** — a persistent knowledge graph of topics, sub-topics, tasks, decisions, intents, teams, projects, and statuses. Use it as long-term memory: read context before starting work, browse entities, update properties, reorganize and repair the graph, and search semantically.
 
 ## Prerequisites
 
@@ -44,16 +44,21 @@ Human-readable messages go to stderr. **Always parse stdout JSON, ignore stderr.
 
 ## Permissions Model
 
-The CLI is **read-heavy with structural-cleanup writes**:
+The CLI is **read-heavy with structural-cleanup and repair writes**:
 
-- **Read all**: topics, sub-topics, tasks, decisions, intents, teams, projects, statuses
-- **Diagnose** V2 reconciliation noise (uncapped edge counts) for decisions, topics, sub-topics, intents
-- **Update scalar fields** on tasks **and** topics, sub-topics-via-move, decisions, intents
-- **Reorganize edges**: move sub-topics between topics, link/unlink decision edges (sub-topic, task, intent), merge duplicate roots
-- **Soft-archive** topics, sub-topics, decisions, intents (sets `deleted=true`; never hard-delete)
-- **Create**: projects only
+- **Read all**: topics, sub-topics, tasks, decisions, intents, teams, projects, statuses.
+- **Diagnose** structural noise (uncapped edge counts) for decisions, topics, sub-topics, intents, plus forked version chains.
+- **Update scalar fields** on tasks, topics, decisions, intents (and revise sub-topic versions append-only).
+- **Reorganize edges**: move sub-topics between topics; link/unlink decision edges (sub-topic, task, intent); re-parent tasks (`HAS_SUBTASK`); normalize contradictory decision rel-types.
+- **Merge** duplicate roots (topics, decisions, intents, tasks) and **split** an over-merged root (topics, decisions, intents) back apart.
+- **Soft-archive** topics, sub-topics, decisions, intents, tasks (sets `deleted=true`; never hard-delete).
+- **Recover** soft-deleted entities (`entity list-deleted` → `entity restore`).
+- **Repair** forked version chains (`repair version-chains`).
+- **Re-align embeddings** (`embeddings status` / `embeddings sync`) — the "commit my changes" step for the knowledge graph.
+- **Create**: projects only. (No standalone topic/decision/intent/task creation — those are created by transcript ingestion or split.)
+- **Gated Cypher**: `cypher run` executes a user-reviewed `.cypher` file behind a per-owner passphrase the agent does not know.
 
-> **Hard delete is never available.** Every "archive" / "merge source" sets `deleted=true` so history stays traversable.
+> **Hard delete is never available.** Every "archive" / "merge source" sets `deleted=true` so history stays traversable, and archives are reversible via `entity restore`.
 
 ## Recommended Workflow
 
@@ -61,7 +66,7 @@ The CLI is **read-heavy with structural-cleanup writes**:
    ```bash
    internode context --max-tokens 4000
    ```
-   This returns a pre-formatted OI summary optimized for LLM consumption.
+   Returns a pre-formatted OI summary optimized for LLM consumption.
 
 2. **Search** when you need specific knowledge:
    ```bash
@@ -75,17 +80,19 @@ The CLI is **read-heavy with structural-cleanup writes**:
    internode subtopics list --type Idea
    ```
 
-4. **Get details** on one or more entities by ID (returns knowledge molecule for tasks/decisions/sub-topics, full properties for everything else; max 20 IDs per call):
+4. **Get details** on one or more entities by ID (knowledge molecule for tasks/decisions/sub-topics, full properties for everything else; max 20 IDs per call):
    ```bash
    internode entity get <id1> [<id2> ...]
    ```
 
-5. **Update tasks** as you work — change status, assignee, team, project:
-   ```bash
-   internode tasks update <id> --status <status-id> --assignee "user@example.com"
-   ```
+5. **Update / reorganize** as you work — change task properties, re-parent, move sub-topics, fix edges.
 
-6. **Clean up V2 noise** — see the "Cleaning up V2 reconciliation noise" section below for the diagnose → inspect → mutate loop.
+6. **Clean up & repair** — see "Cleaning up & repairing the graph" for the diagnose → inspect → mutate → diagnose loop.
+
+7. **Re-align embeddings** after content-affecting changes so semantic search stays accurate:
+   ```bash
+   internode embeddings sync
+   ```
 
 ## Entity Types
 
@@ -111,10 +118,11 @@ internode context [--max-tokens N]
 internode search "<query>"
 # Semantic search across all entity types.
 
-internode entity get <id1> [<id2> ... <idN>]
-# Get full details for up to 20 entities by ID. Returns knowledge molecule for
-# tasks, decisions, sub-topics. Returns full properties for topics, intents,
-# teams, projects, statuses. Response is keyed by entity ID.
+internode entity get <id1> [<id2> ... <idN>] [--include-deleted]
+# Get full details for up to 20 entities by ID. Knowledge molecule for tasks,
+# decisions, sub-topics; full properties for topics, intents, teams, projects,
+# statuses. Response keyed by entity ID. --include-deleted returns a minimal
+# payload for soft-deleted entities (use with the recovery workflow).
 ```
 
 ### List Endpoints
@@ -123,69 +131,23 @@ All list commands return lightweight results: `{ items: [{ id, label }], total, 
 
 ```bash
 internode topics list [--category N] [--search "text"] [--limit N] [--offset N]
-# List main topics. Filter by topic category index.
 
 internode subtopics list [--type "Idea|Problem|Solution|..."] [--topic ID] [--limit N] [--offset N]
-# List sub-topics (topic versions). Filter by type: Outcome, Problem, Constraint,
-# Solution, Opportunity, Idea, Information.
+# Types: Outcome, Problem, Constraint, Solution, Opportunity, Idea, Information.
 
 internode tasks list [--team ID] [--project ID] [--status "name"] [--priority "..."] [--assignee "email"] [--search "text"] [--topic ID] [--intent ID] [--topic-category "index"] [--limit N] [--offset N]
-# List tasks with PM and OI filters. topic, intent, and topic-category
-# filter tasks through the decision graph.
+# topic, intent, and topic-category filter tasks through the decision graph.
 
 internode decisions list [--search "text"] [--limit N] [--offset N]
-# List decisions.
-
 internode intents list [--limit N] [--offset N]
-# List intents.
-
 internode teams list
-# List teams.
-
 internode projects list [--team ID]
-# List projects, optionally filtered by team.
-
 internode statuses list [--team ID]
-# List statuses, optionally filtered by team.
-```
-
-### Task Update
-
-```bash
-internode tasks update <id> [--title "..."] [--description "..."] [--priority "..."] [--assignee "email"] [--due-date "YYYY-MM-DD"] [--status ID] [--type "..."] [--team ID] [--project ID] [--user-notes "..."] [--blocked-by-reason "..."]
-```
-
-**Team/project changes:** When changing a task's team, incompatible project, status, and assignee are automatically cleared. The response includes a `cleared_fields` list when this happens. Projects are dependent on teams — ensure the target project belongs to the target team.
-
-### Project Create
-
-```bash
-internode projects create --name "..." --team <team-id> [--key "..."] [--description "..."]
-```
-
-A project always belongs to a team (`--team` is required on create).
-
-### Diagnostics (uncapped — find the noise)
-
-`internode diagnose` returns the **real** edge counts so you can see V2 reconciliation noise. Unlike `entity get` (which caps related-entity lists at 4), the diagnostic endpoints are uncapped.
-
-```bash
-internode diagnose decisions [--by sub_topics|tasks|intents] [--top N] [--min-edges N] [--offset N]
-# OIDecisions ranked by outgoing sub-topic / task / intent edges. Default --by sub_topics.
-
-internode diagnose topics    [--by sub_topics|decisions]      [--top N] [--min-edges N] [--offset N]
-# OITopic roots ranked by sub-topic count and the number of distinct decisions touching any sub-topic.
-
-internode diagnose subtopics                                  [--top N] [--min-edges N] [--offset N]
-# OITopicVersion sub-topics ranked by incoming decision-edge count.
-
-internode diagnose intents                                    [--top N] [--min-edges N] [--offset N]
-# OIIntents ranked by incoming SUPPORTS edge count from decisions.
 ```
 
 ### Inspecting a single entity (uncapped relationship dump)
 
-`<entity> inspect <id>` returns the **full**, uncapped neighborhood for one root — every sub-topic, task, intent, or decision edge. Use this to plan a move/merge/unlink.
+`<entity> inspect <id>` returns the **full**, uncapped neighborhood for one root. Use this to plan a move/merge/split/unlink.
 
 ```bash
 internode topics inspect    <topic_id>          # parent, sub-topic versions, decision links per sub-topic
@@ -194,22 +156,68 @@ internode decisions inspect <decision_id>       # every sub-topic, intent, and t
 internode intents inspect   <intent_id>         # every supporting decision
 ```
 
+### Diagnostics (uncapped — find the noise)
+
+`internode diagnose` returns the **real** edge counts so you can see structural noise. Unlike `entity get` (which caps related-entity lists at 4), the diagnostic endpoints are uncapped.
+
+```bash
+internode diagnose decisions [--by sub_topics|tasks|intents] [--top N] [--min-edges N] [--offset N]
+# OIDecisions ranked by outgoing sub-topic / task / intent edges. Default --by sub_topics.
+
+internode diagnose topics    [--by sub_topics|decisions]      [--top N] [--min-edges N] [--offset N]
+# OITopic roots ranked by sub-topic count and distinct decisions touching any sub-topic.
+
+internode diagnose subtopics                                  [--top N] [--min-edges N] [--offset N]
+# OITopicVersion sub-topics ranked by incoming decision-edge count.
+
+internode diagnose intents                                    [--top N] [--min-edges N] [--offset N]
+# OIIntents ranked by incoming SUPPORTS edge count from decisions.
+
+internode diagnose version-chains [--labels OIDecision,OIIntent,OITask] [--limit N]
+# Single-lineage roots whose version history has FORKED into multiple heads
+# (breaks head resolution downstream). Repair with `repair version-chains`.
+```
+
+### Task mutations
+
+```bash
+internode tasks update <id> [--title "..."] [--description "..."] [--priority "..."] [--assignee "email"] [--due-date "YYYY-MM-DD"] [--status ID] [--type "..."] [--team ID] [--project ID] [--user-notes "..."] [--blocked-by-reason "..."] [--parent <task_id>] [--clear-parent]
+internode tasks archive <id>                                   # soft-delete root + stamp a deleted version
+internode tasks merge   <source_id> --into <target_id>         # re-point decision edges, team/project, subtasks; then archive source
+```
+
+- **Team/project changes:** When changing a task's team, incompatible project, status, and assignee are auto-cleared. The response includes a `cleared_fields` list when this happens. Projects depend on teams — the target project must belong to the target team.
+- **Re-parenting (`HAS_SUBTASK`):** `--parent <task_id>` makes this task a subtask of another; `--clear-parent` detaches it (becomes a root task). A task has at most one parent — re-parenting auto-detaches the old parent. Cycles and self-parenting are rejected (422).
+- **`tasks merge`:** incoming decision edges (SPAWNS/BLOCKS/CANCELS/MODIFIES) re-point onto the target's live head version; `HAS_TASK` ownership and `HAS_SUBTASK` parent/child edges re-parent onto the target; then the source is archived.
+
+### Project create
+
+```bash
+internode projects create --name "..." --team <team-id> [--key "..."] [--description "..."]
+# A project always belongs to a team (--team is required).
+```
+
 ### Topic mutations
 
 ```bash
 internode topics update  <id> [--title "..."] [--description "..."] [--category 1..11] [--primary-contributor "email"]
-internode topics archive <id>                                # soft-delete root + all versions
-internode topics merge   <source_id> --into <target_id>      # re-parent every sub-topic version, then archive source
+internode topics archive <id>                                  # soft-delete root + all versions
+internode topics merge   <source_id> --into <target_id>        # re-parent every sub-topic version, then archive source
+internode topics split   <source_id> --file <plan.json> [--keep-source] [--dry-run]
 ```
+
+`topics split` re-parents groups of sub-topic versions onto existing and/or freshly-created topics. The plan file is a JSON array of entries, each with either `target_topic_id` **or** `new_topic` (`{topic_title, topic_description, category_index}`) plus `sub_topic_version_ids`. By default the source is archived after splitting; pass `--keep-source` to keep it. `--dry-run` prints the plan without writing.
 
 ### Sub-topic mutations
 
 ```bash
 internode subtopics move    <sub_topic_id> --to-topic <target_topic_id>
 internode subtopics archive <sub_topic_id>
+internode subtopics update  <sub_topic_id> [--conclusion "..."] [--type Idea|Problem|Solution|Information|Outcome|Opportunity|Constraint] [--primary-contributor "email"]
 ```
 
-`move` atomically swaps `HAS_VERSION` so the version is owned by exactly one topic. The version's conclusion text (and embedding) is untouched.
+- `move` atomically swaps `HAS_VERSION` so the version is owned by exactly one topic. The conclusion text (and embedding) is untouched.
+- `update` **revises** a sub-topic: it appends a NEW version chained from the prior tail (versions are append-only — never overwritten in place).
 
 ### Decision mutations
 
@@ -217,6 +225,7 @@ internode subtopics archive <sub_topic_id>
 internode decisions update  <id> [--title ...] [--description ...] [--rationale ...] [--status ...] [--decision-maker email] [--type explicit|implicit] [--priority ...]
 internode decisions archive <id>
 internode decisions merge   <source_id> --into <target_id>     # re-parent every sub-topic / task / intent edge, then archive source
+internode decisions split   <source_id> --file <plan.json> [--keep-source] [--dry-run]
 
 # Edge link/unlink — pass exactly one of --sub-topic, --task, --intent
 internode decisions link   <id> --sub-topic <stid> [--type RATIFIES|REJECTS|DEFERS]
@@ -226,9 +235,16 @@ internode decisions link   <id> --intent <intent_id>
 internode decisions unlink <id> --sub-topic <stid> [--type RATIFIES|REJECTS|DEFERS]
 internode decisions unlink <id> --task <task_or_version_id> [--type SPAWNS|BLOCKS|CANCELS|MODIFIES]
 internode decisions unlink <id> --intent <intent_id>
+
+# Collapse contradictory rel-types on the same (decision, target) pair
+internode decisions normalize-edges [--decision <id>] [--sub-topic-prefer RATIFIES,REJECTS,DEFERS] [--task-prefer SPAWNS,MODIFIES,BLOCKS,CANCELS] [--dry-run]
 ```
 
-> **Decision invariant (HTTP 422 on violation):** Every live OIDecision MUST keep ≥1 sub-topic edge AND ≥1 intent edge. If `unlink` would drop either to zero, it's blocked with a structured 422 response. The agent must add a replacement edge first, or call `merge` / `archive` to retire the decision explicitly.
+`decisions split` re-edges groups of sub-topic/task/intent edges onto existing and/or freshly-created decisions. The plan file is a JSON array of entries with either `target_decision_id` **or** `new_decision` (`{decision_title, description, rationale, decision_status, decision_maker_email, decision_type, priority}`) plus `edges` (`[{kind: "sub_topic"|"task"|"intent", target_id, rel_type}]`). `--keep-source` keeps the source; `--dry-run` previews.
+
+`decisions normalize-edges` keeps the single most-preferred rel-type when a decision points at the same target with multiple conflicting types. Omit `--decision` to scan every live decision. Types not listed in a `*-prefer` order are never kept.
+
+> **Decision invariant (HTTP 422 on violation):** Every live OIDecision MUST keep ≥1 sub-topic edge AND ≥1 intent edge. If `unlink` would drop either to zero, it's blocked with a structured 422. Add a replacement edge first, or call `merge` / `archive` to retire the decision explicitly.
 
 > **`link --task` SPAWNS guard:** The backend reuses the V3 `_safe_link_decision_to_task_version` helper, so SPAWNS is auto-downgraded to MODIFIES when the target isn't the first task version, and BLOCKS/CANCELS/MODIFIES is auto-upgraded to SPAWNS when the target is a first version with no SPAWNS yet. The response carries a `note` field when this happens.
 
@@ -237,48 +253,113 @@ internode decisions unlink <id> --intent <intent_id>
 ```bash
 internode intents update  <id> [--title ...] [--statement ...] [--scope ...] [--signals "a,b,c"]
 internode intents archive <id>
-internode intents merge   <source_id> --into <target_id>      # re-parent every incoming SUPPORTS edge, then archive source
+internode intents merge   <source_id> --into <target_id>       # re-parent every incoming SUPPORTS edge, then archive source
+internode intents split   <source_id> --file <plan.json> [--keep-source] [--dry-run]
+
+internode intents add-signal    <id> --signal "phrase" [--signal "phrase" ...]    # deduped, case-insensitive
+internode intents remove-signal <id> --signal "phrase" [--signal "phrase" ...]    # matched case-insensitively
+internode intents set-scope     <id> "<scope text>"                               # pass "" to clear
+
+# Consolidate several source intents into one target
+internode intents consolidate --into <target_id> --source <id> [--source <id> ...] [--statement-strategy keep_target|first_non_empty] [--scope-strategy keep_target|first_non_empty] [--signals-strategy union|keep_target] [--dry-run]
 ```
 
-## Cleaning up V2 reconciliation noise
+`intents split` undoes a false consolidation/merge: it re-points groups of supporting decisions (incoming `SUPPORTS` edges) onto existing and/or freshly-created intents. The plan file is a JSON array of entries with either `target_intent_id` **or** `new_intent` (`{intent_title, statement, scope, signals}`) plus `supporting_decision_ids`. `--keep-source` keeps the source; `--dry-run` previews.
 
-V2 reconciliation produced two recurring defects you may need to clean up before V3 takes over:
+`intents consolidate` is the inverse of split — it folds multiple source intents into one target (re-points their SUPPORTS edges, merges statement/scope/signals per strategy), then archives the sources.
+
+### Recovery — restore soft-deleted entities
+
+Every archive/merge is reversible. Find and restore soft-deleted roots:
+
+```bash
+internode entity list-deleted [--labels OITopic,OIDecision,OIIntent,OITask] [--search "text"] [--limit N] [--offset N]
+internode entity get <id> --include-deleted          # verify it's the right entity before restoring
+internode entity restore <id> --label OITopic|OIDecision|OIIntent|OITask
+# restore un-deletes the root and its versions and re-enqueues pgvector embeddings.
+```
+
+### Repair — forked version chains
+
+Single-lineage entities (OIDecision/OIIntent/OITask) keep one linear version history per root. Pipeline bugs can fork a chain into multiple heads, which breaks head resolution (snapshots, search, embeddings). Diagnose with `diagnose version-chains`, then repair:
+
+```bash
+internode repair version-chains --dry-run                        # preview every forked root that would be repaired
+internode repair version-chains                                  # re-linearize all forked roots by data_date
+internode repair version-chains --labels OIDecision,OIIntent     # restrict to specific types
+internode repair version-chains --ids oidecision_abc,oiintent_xyz # repair only these roots
+```
+
+Repair drops the tangled `UPDATED_TO` edges among a root's live versions and rebuilds a single date-ordered chain with exactly one head, then re-enqueues embeddings (the head may have changed). OITopic is intentionally **not** repairable this way — a topic fans out into many independent sub-topic lineages, so "multiple heads" is normal there.
+
+### Embeddings — re-align pgvector with Neo4j ("commit")
+
+```bash
+internode embeddings status
+# Read-only drift report: Neo4j vs pgvector per entity type. Safe any time.
+
+internode embeddings sync [--scope all|OITopic|OIIntent|OITask|OIDecision|OIProject|ExternalSyncJob|OITopicVersion] [--ids id1,id2] [--since 2024-09-01T00:00:00Z] [--force] [--dry-run] [--no-wait] [--timeout N]
+# Realign embeddings after content-affecting changes. Default is synchronous
+# (bounded by --timeout, default 120s, max 900). --no-wait backgrounds the work.
+# --dry-run reports the plan without writing. --force re-embeds even when the
+# v3 hash is unchanged. --ids and --since are mutually exclusive.
+```
+
+Run `embeddings sync` after edits that change searchable content (titles, descriptions, conclusions, merges, splits, repairs). Most mutation endpoints already enqueue embeddings automatically — `sync` is the explicit catch-up / drift-fixer.
+
+### Gated Cypher runner
+
+A user-only escape hatch for graph surgery the structured commands can't express. The agent drafts a `.cypher` file; the **user** reviews it and runs it, typing a per-owner passphrase the agent does not know — so an agent cannot execute the file it wrote.
+
+```bash
+internode cypher set-passphrase           # prompts twice; min length 12 chars (interactive TTY only)
+internode cypher run <file.cypher>        # prompts for the passphrase, then executes blocks (separated by lines containing only ';')
+internode cypher run <file.cypher> --dry-run   # validate guardrails (EXPLAIN) without executing any block
+```
+
+After a real run that mutates content, the API hint suggests `internode embeddings sync` to re-align pgvector. Queries are owner-scoped and guardrailed (denylist + owner-id binding).
+
+## Cleaning up & repairing the graph
+
+Recurring defects you may need to fix:
 
 1. **Sub-topic noise under topics** — `OITopicVersion` nodes attached to the wrong `OITopic` root, plus duplicate roots about the same subject.
-2. **Over-linked decisions** — single `OIDecision` roots carrying a very large fan-out of `RATIFIES|REJECTS|DEFERS` edges (and matching noise on `SUPPORTS` edges to intents).
-
-### Decision invariant — read this first
-
-Every live `OIDecision` must keep:
-
-- **≥1 sub-topic edge** (`RATIFIES`, `REJECTS`, or `DEFERS` to an `OITopicVersion`)
-- **≥1 intent edge** (`SUPPORTS` to an `OIIntent`)
-
-If you try to `unlink` an edge whose removal would drop either count to zero, the backend returns **HTTP 422** with a structured error and refuses the change. To make progress in that case, **first add a replacement edge** (`link`), or call `decisions merge` to fold this decision into another, or `decisions archive` to retire it.
+2. **Over-linked / contradictory decisions** — a single `OIDecision` carrying a huge fan-out, or pointing at the same target with conflicting rel-types.
+3. **Duplicate roots** — two topics / decisions / intents / tasks about the same thing (false merges create one; false splits create two).
+4. **Forked version chains** — a decision/intent/task root with multiple version heads.
 
 ### Workflow loop
 
 ```text
-diagnose  →  inspect  →  mutate  →  diagnose
+diagnose  →  inspect  →  mutate  →  diagnose  →  embeddings sync
 ```
 
-1. **`diagnose`** to find outliers (uncapped counts).
+1. **`diagnose`** to find outliers / forks (uncapped counts).
 2. **`inspect`** the worst offenders to see every edge.
-3. **`mutate`** with the appropriate primitive (`move` / `merge` / `link` / `unlink` / `archive`).
-4. **`diagnose`** again to confirm the count came down.
+3. **`mutate`** with the right primitive (`move` / `merge` / `split` / `link` / `unlink` / `normalize-edges` / `archive` / `repair`).
+4. **`diagnose`** again to confirm.
+5. **`embeddings sync`** to re-align semantic search.
 
-### Decision tree: move vs merge vs archive vs unlink
+### Decision tree: which primitive?
 
 | Symptom | Right primitive |
 |---|---|
 | Sub-topic attached to the wrong topic root | `subtopics move <sub_id> --to-topic <correct_topic_id>` |
+| Sub-topic conclusion text needs revising | `subtopics update <sub_id> --conclusion "..." --type ...` (appends a new version) |
 | Two `OITopic` roots about the same subject | `topics merge <duplicate_id> --into <canonical_id>` |
+| One topic actually covers several distinct subjects | `topics split <id> --file plan.json` |
 | Two `OIIntent` roots about the same goal | `intents merge <duplicate_id> --into <canonical_id>` |
+| Several intents that should be one | `intents consolidate --into <target> --source <id> --source <id>` |
+| One intent was falsely merged from several | `intents split <id> --file plan.json` |
 | Two `OIDecision` roots about the same choice | `decisions merge <duplicate_id> --into <canonical_id>` |
-| Decision is correctly linked to a sub-topic but with the wrong rel-type | `decisions unlink <did> --sub-topic <stid> --type WRONG` then `decisions link <did> --sub-topic <stid> --type RIGHT` |
-| Decision linked to a sub-topic that doesn't actually relate to it | `decisions unlink <did> --sub-topic <stid>` (blocked with 422 if it's the last sub-topic) |
-| Decision is genuinely wrong / over-linked beyond saving | `decisions archive <did>` |
-| Sub-topic conclusion text is wrong | `subtopics archive <sub_id>` and let the chat layer / next transcript create a corrected one (sub-topic versions are append-only — never edit the conclusion in place) |
+| One decision conflates several distinct choices | `decisions split <id> --file plan.json` |
+| Two `OITask` roots that are the same task | `tasks merge <duplicate_id> --into <canonical_id>` |
+| A task belongs under a different parent task | `tasks update <id> --parent <parent_id>` (or `--clear-parent`) |
+| Decision linked to a sub-topic/task with the wrong rel-type | `decisions unlink ... --type WRONG` then `decisions link ... --type RIGHT`, or `decisions normalize-edges` for bulk conflicts |
+| Decision linked to something unrelated | `decisions unlink <did> --sub-topic <stid>` (422 if it's the last sub-topic) |
+| Decision/topic/intent/task is genuinely wrong | `<entity> archive <id>` (reversible via `entity restore`) |
+| Accidentally archived something | `entity list-deleted` → `entity restore <id> --label <RootLabel>` |
+| A decision/intent/task has multiple version heads | `repair version-chains` (preview with `--dry-run` or `diagnose version-chains`) |
 
 ### Worked examples
 
@@ -292,44 +373,41 @@ internode decisions inspect oidecision_abc
 # → shows every sub-topic, intent, task edge with parent topics
 ```
 
-**Re-parent a mis-attached sub-topic**
+**Merge two duplicate topics, then re-align search**
 
 ```bash
-internode subtopics inspect oitopicv_xyz
-# → parent_topic_id is wrong
-
-internode subtopics move oitopicv_xyz --to-topic oitopic_correct
-```
-
-**Merge two duplicate topics**
-
-```bash
-internode diagnose topics --by sub_topics --top 50
-# → spot the duplicates by title
-
+internode diagnose topics --by sub_topics --top 50      # spot duplicates by title
 internode topics merge oitopic_dup --into oitopic_canonical
-# → moves every sub-topic version, then archives oitopic_dup
+internode embeddings sync --scope OITopic
 ```
 
-**Unlink a noisy decision↔sub-topic edge (with invariant check)**
+**Split a falsely-merged intent (preview first)**
 
 ```bash
-internode decisions inspect oidecision_abc
-# → confirm there are still other sub-topic + intent edges
-
-internode decisions unlink oidecision_abc --sub-topic oitopicv_noise --type RATIFIES
-# → if this would leave 0 sub-topic edges, you'll get 422 — add a replacement first or archive the decision
+cat > /tmp/intent_split.json <<'JSON'
+[
+  { "new_intent": {"intent_title": "Reduce churn", "statement": "Lower monthly logo churn", "scope": "retention"},
+    "supporting_decision_ids": ["oidecision_a", "oidecision_b"] }
+]
+JSON
+internode intents split oiintent_mixed --file /tmp/intent_split.json --dry-run   # inspect the plan
+internode intents split oiintent_mixed --file /tmp/intent_split.json             # apply (archives source by default; --keep-source to keep)
 ```
 
-**Resolve a 422 when the only sub-topic edge is wrong**
+**Repair forked version chains**
 
 ```bash
-# Option A: link the correct sub-topic, THEN unlink the wrong one
-internode decisions link   oidecision_abc --sub-topic oitopicv_correct --type RATIFIES
-internode decisions unlink oidecision_abc --sub-topic oitopicv_wrong   --type RATIFIES
+internode diagnose version-chains                 # any forked roots?
+internode repair version-chains --dry-run         # what would change
+internode repair version-chains                   # re-linearize, re-embed
+```
 
-# Option B: archive the decision entirely
-internode decisions archive oidecision_abc
+**Recover an accidentally archived decision**
+
+```bash
+internode entity list-deleted --labels OIDecision --search "pricing"
+internode entity get oidecision_abc --include-deleted    # confirm
+internode entity restore oidecision_abc --label OIDecision
 ```
 
 ## Key Patterns
@@ -343,22 +421,26 @@ if echo "$result" | jq -e '.ok' > /dev/null 2>&1; then
 fi
 ```
 
+### Preview destructive structural changes
+
+`split`, `normalize-edges`, `consolidate`, `repair version-chains`, and `embeddings sync` all support `--dry-run`. Use it to inspect the plan before committing — especially for split/merge/repair, which move many edges at once.
+
 ### Entity detail returns knowledge molecules
 
-For tasks, decisions, and sub-topics, `entity get` returns a **knowledge molecule** — the entity plus its decision-centric neighborhood (related decisions, topics, intents, tasks). For other types, it returns the full property set. You can pass up to 20 IDs in a single call; the response is a dict keyed by entity ID. Entities that fail to resolve return an `error` field instead.
+For tasks, decisions, and sub-topics, `entity get` returns a **knowledge molecule** — the entity plus its decision-centric neighborhood. For other types, the full property set. Up to 20 IDs per call; response keyed by entity ID. IDs that fail to resolve return an `error` field.
 
 ### Mutations are validated server-side
 
-The API enforces allowed fields and entity types. If you send an invalid field, you get a `422` with a descriptive error. Read the error message — it tells you exactly what went wrong.
+The API enforces allowed fields, entity types, and invariants (e.g. the decision invariant, single-parent tasks, split-target shape). Invalid input returns a `422` with a descriptive message — read it; it tells you exactly what to fix.
 
 ### IDs are UUIDs
 
-All entity IDs are UUIDs returned in `data` from list/get commands. Store and reuse them.
+All entity IDs are UUID-style strings returned in `data` from list/get commands. Store and reuse them.
 
 ### Sub-topic types
 
-Sub-topics are typed conclusions attached to topics. Valid types: `Outcome`, `Problem`, `Constraint`, `Solution`, `Opportunity`, `Idea`, `Information`. Filter with `--type` on `subtopics list`.
+Valid types: `Outcome`, `Problem`, `Constraint`, `Solution`, `Opportunity`, `Idea`, `Information`. Filter with `--type` on `subtopics list`.
 
 ### Topic categories
 
-Topics are grouped into business categories (index 1-11): Strategy & Leadership, Product & Innovation, Technology & Engineering, People & Talent, Finance & Business Operations, Marketing & Brand, Sales & Revenue, Customer Success & Support, Legal & Regulatory, Data & Analytics, Other. Filter with `--category` on the topics list.
+Topics are grouped into business categories (index 1-11): Strategy & Leadership, Product & Innovation, Technology & Engineering, People & Talent, Finance & Business Operations, Marketing & Brand, Sales & Revenue, Customer Success & Support, Legal & Regulatory, Data & Analytics, Other. Filter with `--category` on `topics list`.
