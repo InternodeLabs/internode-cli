@@ -20,35 +20,25 @@ cargo build --release
 
 If you want the agent skill file locally:
 
+Copy the [SKILL.md](http://SKILL.md) from this repository and place it in your coding agent as a reference or skill.   
+  
+You can also download it using cURL:
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/InternodeLabs/internode-cli/main/SKILL.md -o SKILL.md
 ```
 
-Install it directly into Cursor skills:
 
-```bash
-mkdir -p ~/.cursor/skills/use-internode-cli
-curl -fsSL https://raw.githubusercontent.com/InternodeLabs/internode-cli/main/SKILL.md -o ~/.cursor/skills/use-internode-cli/SKILL.md
-```
 
-Install it into Claude Code skills (personal scope):
+Each IDE or Coding agent may use skills differently. Here are som examples of where to place and/or reference the Internode skill (typically in its own `.../internode/SKILL.md` path)
 
-```bash
-mkdir -p ~/.claude/skills/use-internode-cli
-curl -fsSL https://raw.githubusercontent.com/InternodeLabs/internode-cli/main/SKILL.md -o ~/.claude/skills/use-internode-cli/SKILL.md
-```
+- Cursor: [https://cursor.com/docs/skills#skill-directories](https://cursor.com/docs/skills#skill-directories)
+- Claude: [https://support.claude.com/en/articles/12512180-use-skills-in-claude](https://support.claude.com/en/articles/12512180-use-skills-in-claude)
+- Codex: [https://developers.openai.com/codex/skills](https://developers.openai.com/codex/skills)
 
-Install it into Codex skills:
 
-```bash
-# User scope (available in all repos)
-mkdir -p ~/.agents/skills/use-internode-cli
-curl -fsSL https://raw.githubusercontent.com/InternodeLabs/internode-cli/main/SKILL.md -o ~/.agents/skills/use-internode-cli/SKILL.md
 
-# Repo scope (available only in current repo)
-mkdir -p .agents/skills/use-internode-cli
-curl -fsSL https://raw.githubusercontent.com/InternodeLabs/internode-cli/main/SKILL.md -o .agents/skills/use-internode-cli/SKILL.md
-```
+You can further customize how you would like the Internode Skill to work in your `AGENTS.md` (or similar) file. For example: `- load internode skill when working with ...` though we have seen the agents we work with do quite well making that decision on their own. 
 
 ## Setup
 
@@ -69,6 +59,7 @@ internode auth status
 
 ## Permissions Model
 
+
 | Action                                                                       | Allowed                       |
 | ---------------------------------------------------------------------------- | ----------------------------- |
 | Read / list all entities                                                     | Yes                           |
@@ -80,6 +71,7 @@ internode auth status
 | Re-parent sub-topics, link/unlink decision edges, merge roots                | Yes (subject to V3 invariant) |
 | Soft-archive (sets `deleted=true`) topics / sub-topics / decisions / intents | Yes                           |
 | Hard delete any entity                                                       | No                            |
+
 
 ## Usage
 
@@ -170,6 +162,7 @@ Diagnostic output is uncapped — each item carries the **real** edge count so y
 diagnose  →  inspect  →  mutate  →  diagnose
 ```
 
+
 | Symptom                                           | Right primitive                                                                    |
 | ------------------------------------------------- | ---------------------------------------------------------------------------------- |
 | Sub-topic on the wrong topic root                 | `subtopics move <sub_id> --to-topic <correct_topic_id>`                            |
@@ -180,6 +173,7 @@ diagnose  →  inspect  →  mutate  →  diagnose
 | Decision linked to an unrelated sub-topic         | `decisions unlink <did> --sub-topic <stid>` (422 if it's the last one)             |
 | Decision is over-linked beyond saving             | `decisions archive <did>`                                                          |
 | Sub-topic conclusion text is wrong                | `subtopics archive <sub_id>` (versions are append-only — never edit in place)      |
+
 
 ### Entity Details
 
@@ -237,6 +231,7 @@ Errors:
 
 ## Exit Codes
 
+
 | Code | Meaning       |
 | ---- | ------------- |
 | 0    | Success       |
@@ -245,6 +240,7 @@ Errors:
 | 3    | Server error  |
 | 4    | Network error |
 
+
 ## Release
 
 GitHub Actions cross-compiles on tag push:
@@ -252,3 +248,4 @@ GitHub Actions cross-compiles on tag push:
 - Linux AMD64
 - macOS ARM64 (Apple Silicon)
 - Windows x64
+
