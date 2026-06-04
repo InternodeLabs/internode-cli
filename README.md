@@ -5,7 +5,7 @@ Agent-native CLI for Internode Organizational Intelligence. Designed for AI agen
 ## Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/istvanspace/internode-cli/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/InternodeLabs/internode-cli/main/install.sh | sh
 ```
 
 Or build from source:
@@ -21,21 +21,21 @@ cargo build --release
 If you want the agent skill file locally:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/istvanspace/internode-cli/main/SKILL.md -o SKILL.md
+curl -fsSL https://raw.githubusercontent.com/InternodeLabs/internode-cli/main/SKILL.md -o SKILL.md
 ```
 
 Install it directly into Cursor skills:
 
 ```bash
 mkdir -p ~/.cursor/skills/use-internode-cli
-curl -fsSL https://raw.githubusercontent.com/istvanspace/internode-cli/main/SKILL.md -o ~/.cursor/skills/use-internode-cli/SKILL.md
+curl -fsSL https://raw.githubusercontent.com/InternodeLabs/internode-cli/main/SKILL.md -o ~/.cursor/skills/use-internode-cli/SKILL.md
 ```
 
 Install it into Claude Code skills (personal scope):
 
 ```bash
 mkdir -p ~/.claude/skills/use-internode-cli
-curl -fsSL https://raw.githubusercontent.com/istvanspace/internode-cli/main/SKILL.md -o ~/.claude/skills/use-internode-cli/SKILL.md
+curl -fsSL https://raw.githubusercontent.com/InternodeLabs/internode-cli/main/SKILL.md -o ~/.claude/skills/use-internode-cli/SKILL.md
 ```
 
 Install it into Codex skills:
@@ -43,11 +43,11 @@ Install it into Codex skills:
 ```bash
 # User scope (available in all repos)
 mkdir -p ~/.agents/skills/use-internode-cli
-curl -fsSL https://raw.githubusercontent.com/istvanspace/internode-cli/main/SKILL.md -o ~/.agents/skills/use-internode-cli/SKILL.md
+curl -fsSL https://raw.githubusercontent.com/InternodeLabs/internode-cli/main/SKILL.md -o ~/.agents/skills/use-internode-cli/SKILL.md
 
 # Repo scope (available only in current repo)
 mkdir -p .agents/skills/use-internode-cli
-curl -fsSL https://raw.githubusercontent.com/istvanspace/internode-cli/main/SKILL.md -o .agents/skills/use-internode-cli/SKILL.md
+curl -fsSL https://raw.githubusercontent.com/InternodeLabs/internode-cli/main/SKILL.md -o .agents/skills/use-internode-cli/SKILL.md
 ```
 
 ## Setup
@@ -69,19 +69,17 @@ internode auth status
 
 ## Permissions Model
 
-
-| Action                                                        | Allowed              |
-| ------------------------------------------------------------- | -------------------- |
-| Read / list all entities                                      | Yes                  |
-| Diagnose V2 reconciliation noise (uncapped edge counts)       | Yes                  |
-| Update task scalar properties                                 | Yes                  |
-| Update topic / sub-topic / decision / intent scalar properties | Yes                  |
-| Create projects                                               | Yes                  |
-| Create other entities                                         | No                   |
-| Re-parent sub-topics, link/unlink decision edges, merge roots | Yes (subject to V3 invariant) |
-| Soft-archive (sets `deleted=true`) topics / sub-topics / decisions / intents | Yes |
-| Hard delete any entity                                        | No                   |
-
+| Action                                                                       | Allowed                       |
+| ---------------------------------------------------------------------------- | ----------------------------- |
+| Read / list all entities                                                     | Yes                           |
+| Diagnose V2 reconciliation noise (uncapped edge counts)                      | Yes                           |
+| Update task scalar properties                                                | Yes                           |
+| Update topic / sub-topic / decision / intent scalar properties               | Yes                           |
+| Create projects                                                              | Yes                           |
+| Create other entities                                                        | No                            |
+| Re-parent sub-topics, link/unlink decision edges, merge roots                | Yes (subject to V3 invariant) |
+| Soft-archive (sets `deleted=true`) topics / sub-topics / decisions / intents | Yes                           |
+| Hard delete any entity                                                       | No                            |
 
 ## Usage
 
@@ -172,16 +170,16 @@ Diagnostic output is uncapped — each item carries the **real** edge count so y
 diagnose  →  inspect  →  mutate  →  diagnose
 ```
 
-| Symptom                                         | Right primitive                                                               |
-| ----------------------------------------------- | ----------------------------------------------------------------------------- |
-| Sub-topic on the wrong topic root               | `subtopics move <sub_id> --to-topic <correct_topic_id>`                       |
-| Two `OITopic` roots about the same subject      | `topics merge <duplicate_id> --into <canonical_id>`                           |
-| Two `OIIntent` roots about the same goal        | `intents merge <duplicate_id> --into <canonical_id>`                          |
-| Two `OIDecision` roots about the same choice    | `decisions merge <duplicate_id> --into <canonical_id>`                        |
+| Symptom                                           | Right primitive                                                                    |
+| ------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Sub-topic on the wrong topic root                 | `subtopics move <sub_id> --to-topic <correct_topic_id>`                            |
+| Two `OITopic` roots about the same subject        | `topics merge <duplicate_id> --into <canonical_id>`                                |
+| Two `OIIntent` roots about the same goal          | `intents merge <duplicate_id> --into <canonical_id>`                               |
+| Two `OIDecision` roots about the same choice      | `decisions merge <duplicate_id> --into <canonical_id>`                             |
 | Decision↔sub-topic linked with the wrong rel-type | `decisions unlink <did> --sub-topic <stid> --type WRONG` → `link ... --type RIGHT` |
-| Decision linked to an unrelated sub-topic       | `decisions unlink <did> --sub-topic <stid>` (422 if it's the last one)        |
-| Decision is over-linked beyond saving           | `decisions archive <did>`                                                     |
-| Sub-topic conclusion text is wrong              | `subtopics archive <sub_id>` (versions are append-only — never edit in place) |
+| Decision linked to an unrelated sub-topic         | `decisions unlink <did> --sub-topic <stid>` (422 if it's the last one)             |
+| Decision is over-linked beyond saving             | `decisions archive <did>`                                                          |
+| Sub-topic conclusion text is wrong                | `subtopics archive <sub_id>` (versions are append-only — never edit in place)      |
 
 ### Entity Details
 
@@ -234,11 +232,10 @@ All commands return JSON envelopes:
 Errors:
 
 ```json
-{"ok": false, "error": {"code": "AUTH_ERROR", "message": "..."}}
+{ "ok": false, "error": { "code": "AUTH_ERROR", "message": "..." } }
 ```
 
 ## Exit Codes
-
 
 | Code | Meaning       |
 | ---- | ------------- |
@@ -248,7 +245,6 @@ Errors:
 | 3    | Server error  |
 | 4    | Network error |
 
-
 ## Release
 
 GitHub Actions cross-compiles on tag push:
@@ -256,4 +252,3 @@ GitHub Actions cross-compiles on tag push:
 - Linux AMD64
 - macOS ARM64 (Apple Silicon)
 - Windows x64
-
