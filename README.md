@@ -34,7 +34,7 @@ Each IDE or Coding agent may use skills differently. Here are som examples of wh
 - Claude: [https://support.claude.com/en/articles/12512180-use-skills-in-claude](https://support.claude.com/en/articles/12512180-use-skills-in-claude)
 - Codex: [https://developers.openai.com/codex/skills](https://developers.openai.com/codex/skills)
 
-You can further customize how you would like the Internode Skill to work in your `AGENTS.md` (or similar) file. For example: `- load internode skill when working with ...` though we have seen the agents we work with do quite well making that decision on their own.
+Some agents allow customizations like adding `disable-model-invocation: true` to scope skill invocation. You can further customize Internode skill invokation via your `AGENTS.md` (or similar) file. For example: Adding `- load internode skill when working with ...`. Though we have seen the agents do quite well making that decision on their own.
 
 ### Use Your Agent to Add This Skill
 
