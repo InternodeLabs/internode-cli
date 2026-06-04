@@ -42,7 +42,9 @@ Most agents have skills built in to add skills easily. See the Cursor skill to a
 
 ![Cursors skill-adding skill](./cursor-skill-skill.png)
 
-## Setup
+## Authenticate CLI
+
+_(Not yet publicly available. Email contact@internode.ai for access.)_
 
 1. Log in to [app.internode.ai](https://app.internode.ai)
 2. Go to **Settings > CLI API Key**
