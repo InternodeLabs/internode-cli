@@ -73,7 +73,7 @@ internode auth status
 | Hard delete any entity                                                       | No                            |
 
 
-## Usage
+## Calling CLI Commands Directly
 
 All commands output structured JSON on stdout. Diagnostics go to stderr.
 
