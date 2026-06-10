@@ -55,7 +55,9 @@ The CLI is **read-heavy with structural-cleanup and repair writes**:
 - **Recover** soft-deleted entities (`entity list-deleted` → `entity restore`).
 - **Repair** forked version chains (`repair version-chains`).
 - **Re-align embeddings** (`embeddings status` / `embeddings sync`) — the "commit my changes" step for the knowledge graph.
-- **Create**: projects only. (No standalone topic/decision/intent/task creation — those are created by transcript ingestion or split.)
+- **Create** net-new entities with an optional historical date: topics, decisions, intents, tasks (`<entity> create … --data-date`), plus projects/teams/statuses (`… --created-date`).
+- **Fix a single version in place**: `<decisions|intents|tasks> version set-date <vid> --data-date …` re-dates one version; `… version delete <vid>` soft-deletes one bad version. Both re-linearize the chain by date.
+- **Fix a root's creation date**: `<projects|teams|statuses> set-created-date <id> --created-date …`.
 - **Gated Cypher**: `cypher run` executes a user-reviewed `.cypher` file behind a per-owner passphrase the agent does not know.
 
 > **Hard delete is never available.** Every "archive" / "merge source" sets `deleted=true` so history stays traversable, and archives are reversible via `entity restore`.
@@ -181,7 +183,8 @@ internode diagnose version-chains [--labels OIDecision,OIIntent,OITask] [--limit
 ### Task mutations
 
 ```bash
-internode tasks update <id> [--title "..."] [--description "..."] [--priority "..."] [--assignee "email"] [--due-date "YYYY-MM-DD"] [--status ID] [--type "..."] [--team ID] [--project ID] [--user-notes "..."] [--blocked-by-reason "..."] [--parent <task_id>] [--clear-parent]
+internode tasks create --title "..." [--description "..."] [--priority "..."] [--assignee "email"] [--due-date "YYYY-MM-DD"] [--status ID] [--type "..."] [--team ID] [--project ID] [--parent <task_id>] [--data-date "YYYY-MM-DD"]
+internode tasks update <id> [--title "..."] [--description "..."] [--priority "..."] [--assignee "email"] [--due-date "YYYY-MM-DD"] [--status ID] [--type "..."] [--team ID] [--project ID] [--user-notes "..."] [--blocked-by-reason "..."] [--parent <task_id>] [--clear-parent] [--data-date "YYYY-MM-DD"]
 internode tasks archive <id>                                   # soft-delete root + stamp a deleted version
 internode tasks merge   <source_id> --into <target_id>         # re-point decision edges, team/project, subtasks; then archive source
 ```
@@ -193,27 +196,33 @@ internode tasks merge   <source_id> --into <target_id>         # re-point decisi
 ### Project create
 
 ```bash
-internode projects create --name "..." --team <team-id> [--key "..."] [--description "..."]
+internode projects create --name "..." --team <team-id> [--key "..."] [--description "..."] [--created-date "YYYY-MM-DD"]
+internode projects set-created-date <project_id> --created-date "YYYY-MM-DD"
+internode teams create --name "..." [--key "..."] [--description "..."] [--created-date "YYYY-MM-DD"]
+internode teams set-created-date <team_id> --created-date "YYYY-MM-DD"
+internode statuses create --team <team-id> --name "..." [--description "..."] [--category "..."] [--created-date "YYYY-MM-DD"]
+internode statuses set-created-date <status_id> --created-date "YYYY-MM-DD"
 # A project always belongs to a team (--team is required).
 ```
 
 ### Topic mutations
 
 ```bash
-internode topics update  <id> [--title "..."] [--description "..."] [--category 1..11] [--primary-contributor "email"]
+internode topics create  --title "..." [--description "..."] [--category 1..11] [--conclusion "..."] [--conclusion-type "..."] [--primary-contributor "email"] [--data-date "YYYY-MM-DD"]
+internode topics update  <id> [--title "..."] [--description "..."] [--category 1..11] [--primary-contributor "email"] [--data-date "YYYY-MM-DD"]
 internode topics archive <id>                                  # soft-delete root + all versions
 internode topics merge   <source_id> --into <target_id>        # re-parent every sub-topic version, then archive source
 internode topics split   <source_id> --file <plan.json> [--keep-source] [--dry-run]
 ```
 
-`topics split` re-parents groups of sub-topic versions onto existing and/or freshly-created topics. The plan file is a JSON array of entries, each with either `target_topic_id` **or** `new_topic` (`{topic_title, topic_description, category_index}`) plus `sub_topic_version_ids`. By default the source is archived after splitting; pass `--keep-source` to keep it. `--dry-run` prints the plan without writing.
+`topics split` re-parents groups of sub-topic versions onto existing and/or freshly-created topics. The plan file is a JSON array of entries, each with either `target_topic_id` **or** `new_topic` (`{topic_title, topic_description, category_index, data_date}`) plus `sub_topic_version_ids`. By default the source is archived after splitting; pass `--keep-source` to keep it. `--dry-run` prints the plan without writing.
 
 ### Sub-topic mutations
 
 ```bash
 internode subtopics move    <sub_topic_id> --to-topic <target_topic_id>
 internode subtopics archive <sub_topic_id>
-internode subtopics update  <sub_topic_id> [--conclusion "..."] [--type Idea|Problem|Solution|Information|Outcome|Opportunity|Constraint] [--primary-contributor "email"]
+internode subtopics update  <sub_topic_id> [--conclusion "..."] [--type Idea|Problem|Solution|Information|Outcome|Opportunity|Constraint] [--primary-contributor "email"] [--data-date "YYYY-MM-DD"]
 ```
 
 - `move` atomically swaps `HAS_VERSION` so the version is owned by exactly one topic. The conclusion text (and embedding) is untouched.
@@ -222,7 +231,8 @@ internode subtopics update  <sub_topic_id> [--conclusion "..."] [--type Idea|Pro
 ### Decision mutations
 
 ```bash
-internode decisions update  <id> [--title ...] [--description ...] [--rationale ...] [--status ...] [--decision-maker email] [--type explicit|implicit] [--priority ...]
+internode decisions create  --title "..." [--description ...] [--rationale ...] [--status ...] [--decision-maker email] [--type explicit|implicit] [--priority ...] [--data-date "YYYY-MM-DD"]
+internode decisions update  <id> [--title ...] [--description ...] [--rationale ...] [--status ...] [--decision-maker email] [--type explicit|implicit] [--priority ...] [--data-date "YYYY-MM-DD"]
 internode decisions archive <id>
 internode decisions merge   <source_id> --into <target_id>     # re-parent every sub-topic / task / intent edge, then archive source
 internode decisions split   <source_id> --file <plan.json> [--keep-source] [--dry-run]
@@ -240,7 +250,7 @@ internode decisions unlink <id> --intent <intent_id>
 internode decisions normalize-edges [--decision <id>] [--sub-topic-prefer RATIFIES,REJECTS,DEFERS] [--task-prefer SPAWNS,MODIFIES,BLOCKS,CANCELS] [--dry-run]
 ```
 
-`decisions split` re-edges groups of sub-topic/task/intent edges onto existing and/or freshly-created decisions. The plan file is a JSON array of entries with either `target_decision_id` **or** `new_decision` (`{decision_title, description, rationale, decision_status, decision_maker_email, decision_type, priority}`) plus `edges` (`[{kind: "sub_topic"|"task"|"intent", target_id, rel_type}]`). `--keep-source` keeps the source; `--dry-run` previews.
+`decisions split` re-edges groups of sub-topic/task/intent edges onto existing and/or freshly-created decisions. The plan file is a JSON array of entries with either `target_decision_id` **or** `new_decision` (`{decision_title, description, rationale, decision_status, decision_maker_email, decision_type, priority, data_date}`) plus `edges` (`[{kind: "sub_topic"|"task"|"intent", target_id, rel_type}]`). `--keep-source` keeps the source; `--dry-run` previews.
 
 `decisions normalize-edges` keeps the single most-preferred rel-type when a decision points at the same target with multiple conflicting types. Omit `--decision` to scan every live decision. Types not listed in a `*-prefer` order are never kept.
 
@@ -251,22 +261,40 @@ internode decisions normalize-edges [--decision <id>] [--sub-topic-prefer RATIFI
 ### Intent mutations
 
 ```bash
-internode intents update  <id> [--title ...] [--statement ...] [--scope ...] [--signals "a,b,c"]
+internode intents create  --title "..." [--statement ...] [--scope ...] [--signal "phrase" --signal ...] [--data-date "YYYY-MM-DD"]
+internode intents update  <id> [--title ...] [--statement ...] [--scope ...] [--signals "a,b,c"] [--data-date "YYYY-MM-DD"]
 internode intents archive <id>
 internode intents merge   <source_id> --into <target_id>       # re-parent every incoming SUPPORTS edge, then archive source
 internode intents split   <source_id> --file <plan.json> [--keep-source] [--dry-run]
 
-internode intents add-signal    <id> --signal "phrase" [--signal "phrase" ...]    # deduped, case-insensitive
-internode intents remove-signal <id> --signal "phrase" [--signal "phrase" ...]    # matched case-insensitively
-internode intents set-scope     <id> "<scope text>"                               # pass "" to clear
+internode intents add-signal    <id> --signal "phrase" [--signal "phrase" ...] [--data-date "YYYY-MM-DD"]   # deduped, case-insensitive
+internode intents remove-signal <id> --signal "phrase" [--signal "phrase" ...] [--data-date "YYYY-MM-DD"]   # matched case-insensitively
+internode intents set-scope     <id> "<scope text>" [--data-date "YYYY-MM-DD"]    # pass "" to clear
 
 # Consolidate several source intents into one target
-internode intents consolidate --into <target_id> --source <id> [--source <id> ...] [--statement-strategy keep_target|first_non_empty] [--scope-strategy keep_target|first_non_empty] [--signals-strategy union|keep_target] [--dry-run]
+internode intents consolidate --into <target_id> --source <id> [--source <id> ...] [--statement-strategy keep_target|first_non_empty] [--scope-strategy keep_target|first_non_empty] [--signals-strategy union|keep_target] [--dry-run] [--data-date "YYYY-MM-DD"]
 ```
 
-`intents split` undoes a false consolidation/merge: it re-points groups of supporting decisions (incoming `SUPPORTS` edges) onto existing and/or freshly-created intents. The plan file is a JSON array of entries with either `target_intent_id` **or** `new_intent` (`{intent_title, statement, scope, signals}`) plus `supporting_decision_ids`. `--keep-source` keeps the source; `--dry-run` previews.
+`intents split` undoes a false consolidation/merge: it re-points groups of supporting decisions (incoming `SUPPORTS` edges) onto existing and/or freshly-created intents. The plan file is a JSON array of entries with either `target_intent_id` **or** `new_intent` (`{intent_title, statement, scope, signals, data_date}`) plus `supporting_decision_ids`. `--keep-source` keeps the source; `--dry-run` previews.
 
 `intents consolidate` is the inverse of split — it folds multiple source intents into one target (re-points their SUPPORTS edges, merges statement/scope/signals per strategy), then archives the sources.
+
+> **Preserve history with `--data-date` / `--created-date`:** every command that writes a new version accepts an optional `--data-date <ISO-8601>` (`2025-03-14` or `2025-03-14T10:00:00Z`). This covers `create` and `update` (topics, sub-topics, tasks, decisions, intents), the intent version-writing ops `set-scope`, `add-signal`, `remove-signal`, `consolidate`, and the per-version `version set-date` fix. It stamps the version with that historical date instead of "now", so the timeline reflects when the knowledge actually happened — critical when correcting backfilled or split data. The version is inserted into the chain at the correct point by date. You may pass `--data-date` alone (no content change) to append a date-corrected version. An unparseable value returns 422. In `split` plans, add a `"data_date"` key inside any `new_topic` / `new_decision` / `new_intent` object to backdate the entity it creates (otherwise it defaults to today, which distorts history). Non-versioned roots (projects, teams, statuses) use `--created-date` at create time and `set-created-date` to fix an existing root.
+
+### Per-version history fixes (decisions / intents / tasks)
+
+Versions are append-only, so a date-only `update` adds a *new* correctly-dated version but leaves the wrongly-dated one behind. To correct an individual version in place, use the `version` sub-commands; the live chain is automatically re-linearized by date afterward.
+
+```bash
+internode decisions version set-date <version_id> --data-date "YYYY-MM-DD"   # re-date one OIDecisionVersion in place
+internode decisions version delete   <version_id>                            # soft-delete one bad version
+internode intents   version set-date <version_id> --data-date "YYYY-MM-DD"
+internode intents   version delete   <version_id>
+internode tasks     version set-date <version_id> --data-date "YYYY-MM-DD"
+internode tasks     version delete   <version_id>
+```
+
+`version delete` is refused (422) when it would remove the only live version of an entity — archive the root instead. Find version ids with `entity get <root_id>` or `<entity> inspect <id>`.
 
 ### Recovery — restore soft-deleted entities
 

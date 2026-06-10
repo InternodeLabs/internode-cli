@@ -288,6 +288,23 @@ enum AuthCmd {
 }
 
 #[derive(Subcommand)]
+enum VersionCmd {
+    /// Re-date a single version in place, then re-linearize the chain by date
+    SetDate {
+        /// Version id (e.g. oidecisionv_…, oiintentv_…, oitaskv_…)
+        version_id: String,
+        /// Historical ISO-8601 date (e.g. 2025-03-14 or 2025-03-14T10:00:00Z)
+        #[arg(long = "data-date")]
+        data_date: String,
+    },
+    /// Soft-delete a single version (refused if it is the only live version)
+    Delete {
+        /// Version id to soft-delete
+        version_id: String,
+    },
+}
+
+#[derive(Subcommand)]
 enum TopicsCmd {
     /// List topics with optional filters
     List {
@@ -306,6 +323,25 @@ enum TopicsCmd {
         /// OITopic id
         id: String,
     },
+    /// Create a net-new topic (optionally backdated with --data-date)
+    Create {
+        #[arg(long)]
+        title: String,
+        #[arg(long)]
+        description: Option<String>,
+        /// Topic category index (1-11)
+        #[arg(long)]
+        category: Option<i64>,
+        #[arg(long)]
+        conclusion: Option<String>,
+        #[arg(long = "conclusion-type")]
+        conclusion_type: Option<String>,
+        #[arg(long = "primary-contributor")]
+        primary_contributor: Option<String>,
+        /// Historical ISO-8601 creation date (e.g. 2025-03-14)
+        #[arg(long = "data-date")]
+        data_date: Option<String>,
+    },
     /// Update topic root-level fields (title, description, category)
     Update {
         id: String,
@@ -319,6 +355,10 @@ enum TopicsCmd {
         /// Primary contributor email
         #[arg(long = "primary-contributor")]
         primary_contributor: Option<String>,
+        /// Historical ISO-8601 date for the new version (e.g. 2025-03-14 or
+        /// 2025-03-14T10:00:00Z). Defaults to now when omitted.
+        #[arg(long = "data-date")]
+        data_date: Option<String>,
     },
     /// Soft-archive a topic (sets deleted=true; sub-topics get re-parented before this)
     Archive {
@@ -401,6 +441,10 @@ enum SubtopicsCmd {
         /// Primary contributor email
         #[arg(long = "primary-contributor")]
         primary_contributor: Option<String>,
+        /// Historical ISO-8601 date for the new version (e.g. 2025-03-14 or
+        /// 2025-03-14T10:00:00Z). Defaults to now when omitted.
+        #[arg(long = "data-date")]
+        data_date: Option<String>,
     },
 }
 
@@ -433,6 +477,38 @@ enum TasksCmd {
         limit: Option<i64>,
         #[arg(long)]
         offset: Option<i64>,
+    },
+    /// Create a net-new task (optionally backdated with --data-date)
+    Create {
+        #[arg(long)]
+        title: String,
+        #[arg(long)]
+        description: Option<String>,
+        #[arg(long)]
+        priority: Option<String>,
+        #[arg(long)]
+        assignee: Option<String>,
+        #[arg(long = "due-date")]
+        due_date: Option<String>,
+        #[arg(long)]
+        status: Option<String>,
+        #[arg(long)]
+        team: Option<String>,
+        #[arg(long)]
+        project: Option<String>,
+        /// Parent OITask id (HAS_SUBTASK)
+        #[arg(long)]
+        parent: Option<String>,
+        #[arg(long = "type")]
+        task_type: Option<String>,
+        /// Historical ISO-8601 creation date (e.g. 2025-03-14)
+        #[arg(long = "data-date")]
+        data_date: Option<String>,
+    },
+    /// Per-version history fixes (set-date / delete) for OITaskVersion nodes
+    Version {
+        #[command(subcommand)]
+        command: VersionCmd,
     },
     /// Update an existing task
     Update {
@@ -468,6 +544,10 @@ enum TasksCmd {
         /// Detach this task from its current parent (make it a root task)
         #[arg(long = "clear-parent", default_value_t = false)]
         clear_parent: bool,
+        /// Historical ISO-8601 date for the new version (e.g. 2025-03-14 or
+        /// 2025-03-14T10:00:00Z). Defaults to now when omitted.
+        #[arg(long = "data-date")]
+        data_date: Option<String>,
     },
     /// Soft-archive a task (sets deleted=true; reversible via 'entity restore')
     Archive {
@@ -500,6 +580,32 @@ enum DecisionsCmd {
         /// OIDecision id
         id: String,
     },
+    /// Create a net-new decision (optionally backdated with --data-date).
+    /// Link sub-topic/intent edges afterward to satisfy edge invariants.
+    Create {
+        #[arg(long)]
+        title: String,
+        #[arg(long)]
+        description: Option<String>,
+        #[arg(long)]
+        rationale: Option<String>,
+        #[arg(long)]
+        status: Option<String>,
+        #[arg(long = "decision-maker")]
+        decision_maker: Option<String>,
+        #[arg(long = "type")]
+        decision_type: Option<String>,
+        #[arg(long)]
+        priority: Option<String>,
+        /// Historical ISO-8601 creation date (e.g. 2025-03-14)
+        #[arg(long = "data-date")]
+        data_date: Option<String>,
+    },
+    /// Per-version history fixes (set-date / delete) for OIDecisionVersion nodes
+    Version {
+        #[command(subcommand)]
+        command: VersionCmd,
+    },
     /// Update decision scalar fields
     Update {
         id: String,
@@ -518,6 +624,10 @@ enum DecisionsCmd {
         decision_type: Option<String>,
         #[arg(long)]
         priority: Option<String>,
+        /// Historical ISO-8601 date for the new version (e.g. 2025-03-14 or
+        /// 2025-03-14T10:00:00Z). Defaults to now when omitted.
+        #[arg(long = "data-date")]
+        data_date: Option<String>,
     },
     /// Soft-archive a decision
     Archive {
@@ -614,6 +724,26 @@ enum IntentsCmd {
         /// OIIntent id
         id: String,
     },
+    /// Create a net-new intent (optionally backdated with --data-date)
+    Create {
+        #[arg(long)]
+        title: String,
+        #[arg(long)]
+        statement: Option<String>,
+        #[arg(long)]
+        scope: Option<String>,
+        /// Signal phrase (repeatable)
+        #[arg(long = "signal")]
+        signals: Vec<String>,
+        /// Historical ISO-8601 creation date (e.g. 2025-03-14)
+        #[arg(long = "data-date")]
+        data_date: Option<String>,
+    },
+    /// Per-version history fixes (set-date / delete) for OIIntentVersion nodes
+    Version {
+        #[command(subcommand)]
+        command: VersionCmd,
+    },
     /// Update intent scalar fields
     Update {
         id: String,
@@ -626,6 +756,10 @@ enum IntentsCmd {
         /// Comma-separated list of signals (e.g. "ARR,churn,growth")
         #[arg(long)]
         signals: Option<String>,
+        /// Historical ISO-8601 date for the new version (e.g. 2025-03-14 or
+        /// 2025-03-14T10:00:00Z). Defaults to now when omitted.
+        #[arg(long = "data-date")]
+        data_date: Option<String>,
     },
     /// Soft-archive an intent
     Archive {
@@ -665,6 +799,9 @@ enum IntentsCmd {
         /// Signal phrase (repeatable)
         #[arg(long = "signal", required = true)]
         signals: Vec<String>,
+        /// Historical ISO-8601 date for the new intent version (e.g. 2025-03-14)
+        #[arg(long = "data-date")]
+        data_date: Option<String>,
     },
     /// Remove one or more signals from an intent (matched case-insensitively)
     RemoveSignal {
@@ -673,6 +810,9 @@ enum IntentsCmd {
         /// Signal phrase to remove (repeatable)
         #[arg(long = "signal", required = true)]
         signals: Vec<String>,
+        /// Historical ISO-8601 date for the new intent version (e.g. 2025-03-14)
+        #[arg(long = "data-date")]
+        data_date: Option<String>,
     },
     /// Set the scope on an intent (pass an empty string to clear)
     SetScope {
@@ -680,6 +820,9 @@ enum IntentsCmd {
         id: String,
         /// New scope value
         scope: String,
+        /// Historical ISO-8601 date for the new intent version (e.g. 2025-03-14)
+        #[arg(long = "data-date")]
+        data_date: Option<String>,
     },
     /// Consolidate multiple source intents into a target intent
     Consolidate {
@@ -701,6 +844,9 @@ enum IntentsCmd {
         /// Print the plan without modifying Neo4j
         #[arg(long = "dry-run")]
         dry_run: bool,
+        /// Historical ISO-8601 date for the merged target version (e.g. 2025-03-14)
+        #[arg(long = "data-date")]
+        data_date: Option<String>,
     },
 }
 
@@ -820,6 +966,26 @@ enum EntityCmd {
 enum TeamsCmd {
     /// List teams
     List,
+    /// Create a new team (optionally backdated with --created-date)
+    Create {
+        #[arg(long)]
+        name: String,
+        #[arg(long)]
+        key: Option<String>,
+        #[arg(long)]
+        description: Option<String>,
+        /// Historical ISO-8601 creation date (e.g. 2025-03-14)
+        #[arg(long = "created-date")]
+        created_date: Option<String>,
+    },
+    /// Correct the creation timestamp of an existing team
+    SetCreatedDate {
+        /// OITeam id
+        id: String,
+        /// ISO-8601 creation date (e.g. 2025-03-14 or 2025-03-14T10:00:00Z)
+        #[arg(long = "created-date")]
+        created_date: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -840,6 +1006,17 @@ enum ProjectsCmd {
         key: Option<String>,
         #[arg(long)]
         description: Option<String>,
+        /// Historical ISO-8601 creation date (e.g. 2025-03-14)
+        #[arg(long = "created-date")]
+        created_date: Option<String>,
+    },
+    /// Correct the creation timestamp of an existing project
+    SetCreatedDate {
+        /// OIProject id
+        id: String,
+        /// ISO-8601 creation date (e.g. 2025-03-14 or 2025-03-14T10:00:00Z)
+        #[arg(long = "created-date")]
+        created_date: String,
     },
 }
 
@@ -849,6 +1026,30 @@ enum StatusesCmd {
     List {
         #[arg(long)]
         team: Option<String>,
+    },
+    /// Create a new status under a team (optionally backdated)
+    Create {
+        /// Team ID (required)
+        #[arg(long)]
+        team: String,
+        #[arg(long)]
+        name: String,
+        #[arg(long)]
+        description: Option<String>,
+        /// Status category (e.g. todo | in_progress | done)
+        #[arg(long)]
+        category: Option<String>,
+        /// Historical ISO-8601 creation date (e.g. 2025-03-14)
+        #[arg(long = "created-date")]
+        created_date: Option<String>,
+    },
+    /// Correct the creation timestamp of an existing status
+    SetCreatedDate {
+        /// OIStatus id
+        id: String,
+        /// ISO-8601 creation date (e.g. 2025-03-14 or 2025-03-14T10:00:00Z)
+        #[arg(long = "created-date")]
+        created_date: String,
     },
 }
 
@@ -911,13 +1112,26 @@ async fn run(cli: Cli) -> Result<(), CliError> {
                 commands::topics::list(limit, offset, search.as_deref(), category).await
             }
             TopicsCmd::Inspect { id } => commands::topics::inspect(&id).await,
-            TopicsCmd::Update { id, title, description, category, primary_contributor } => {
+            TopicsCmd::Create { title, description, category, conclusion, conclusion_type, primary_contributor, data_date } => {
+                commands::topics::create(
+                    &title,
+                    description.as_deref(),
+                    category,
+                    conclusion.as_deref(),
+                    conclusion_type.as_deref(),
+                    primary_contributor.as_deref(),
+                    data_date.as_deref(),
+                )
+                .await
+            }
+            TopicsCmd::Update { id, title, description, category, primary_contributor, data_date } => {
                 commands::topics::update(
                     &id,
                     title.as_deref(),
                     description.as_deref(),
                     category,
                     primary_contributor.as_deref(),
+                    data_date.as_deref(),
                 )
                 .await
             }
@@ -954,12 +1168,14 @@ async fn run(cli: Cli) -> Result<(), CliError> {
                 conclusion,
                 conclusion_type,
                 primary_contributor,
+                data_date,
             } => {
                 commands::subtopics::update(
                     &id,
                     conclusion.as_deref(),
                     conclusion_type.as_deref(),
                     primary_contributor.as_deref(),
+                    data_date.as_deref(),
                 )
                 .await
             }
@@ -973,13 +1189,29 @@ async fn run(cli: Cli) -> Result<(), CliError> {
                     limit, offset,
                 ).await
             }
-            TasksCmd::Update { id, title, description, priority, assignee, due_date, status, team, project, user_notes, blocked_by_reason, task_type, parent, clear_parent } => {
+            TasksCmd::Create { title, description, priority, assignee, due_date, status, team, project, parent, task_type, data_date } => {
+                commands::tasks::create(
+                    &title, description.as_deref(), priority.as_deref(),
+                    assignee.as_deref(), due_date.as_deref(), status.as_deref(),
+                    team.as_deref(), project.as_deref(), parent.as_deref(),
+                    task_type.as_deref(), data_date.as_deref(),
+                ).await
+            }
+            TasksCmd::Version { command } => match command {
+                VersionCmd::SetDate { version_id, data_date } => {
+                    commands::tasks::version_set_date(&version_id, &data_date).await
+                }
+                VersionCmd::Delete { version_id } => {
+                    commands::tasks::version_delete(&version_id).await
+                }
+            },
+            TasksCmd::Update { id, title, description, priority, assignee, due_date, status, team, project, user_notes, blocked_by_reason, task_type, parent, clear_parent, data_date } => {
                 commands::tasks::update(
                     &id, title.as_deref(), description.as_deref(), priority.as_deref(),
                     assignee.as_deref(), due_date.as_deref(), status.as_deref(),
                     team.as_deref(), project.as_deref(), user_notes.as_deref(),
                     blocked_by_reason.as_deref(), task_type.as_deref(),
-                    parent.as_deref(), clear_parent,
+                    parent.as_deref(), clear_parent, data_date.as_deref(),
                 ).await
             }
             TasksCmd::Archive { id } => commands::tasks::archive(&id).await,
@@ -992,6 +1224,27 @@ async fn run(cli: Cli) -> Result<(), CliError> {
                 commands::decisions::list(search.as_deref(), limit, offset).await
             }
             DecisionsCmd::Inspect { id } => commands::decisions::inspect(&id).await,
+            DecisionsCmd::Create { title, description, rationale, status, decision_maker, decision_type, priority, data_date } => {
+                commands::decisions::create(
+                    &title,
+                    description.as_deref(),
+                    rationale.as_deref(),
+                    status.as_deref(),
+                    decision_maker.as_deref(),
+                    decision_type.as_deref(),
+                    priority.as_deref(),
+                    data_date.as_deref(),
+                )
+                .await
+            }
+            DecisionsCmd::Version { command } => match command {
+                VersionCmd::SetDate { version_id, data_date } => {
+                    commands::decisions::version_set_date(&version_id, &data_date).await
+                }
+                VersionCmd::Delete { version_id } => {
+                    commands::decisions::version_delete(&version_id).await
+                }
+            },
             DecisionsCmd::Update {
                 id,
                 title,
@@ -1001,6 +1254,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
                 decision_maker,
                 decision_type,
                 priority,
+                data_date,
             } => {
                 commands::decisions::update(
                     &id,
@@ -1011,6 +1265,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
                     decision_maker.as_deref(),
                     decision_type.as_deref(),
                     priority.as_deref(),
+                    data_date.as_deref(),
                 )
                 .await
             }
@@ -1072,13 +1327,32 @@ async fn run(cli: Cli) -> Result<(), CliError> {
                 commands::intents::list(limit, offset).await
             }
             IntentsCmd::Inspect { id } => commands::intents::inspect(&id).await,
-            IntentsCmd::Update { id, title, statement, scope, signals } => {
+            IntentsCmd::Create { title, statement, scope, signals, data_date } => {
+                commands::intents::create(
+                    &title,
+                    statement.as_deref(),
+                    scope.as_deref(),
+                    &signals,
+                    data_date.as_deref(),
+                )
+                .await
+            }
+            IntentsCmd::Version { command } => match command {
+                VersionCmd::SetDate { version_id, data_date } => {
+                    commands::intents::version_set_date(&version_id, &data_date).await
+                }
+                VersionCmd::Delete { version_id } => {
+                    commands::intents::version_delete(&version_id).await
+                }
+            },
+            IntentsCmd::Update { id, title, statement, scope, signals, data_date } => {
                 commands::intents::update(
                     &id,
                     title.as_deref(),
                     statement.as_deref(),
                     scope.as_deref(),
                     signals.as_deref(),
+                    data_date.as_deref(),
                 )
                 .await
             }
@@ -1100,14 +1374,14 @@ async fn run(cli: Cli) -> Result<(), CliError> {
                 )
                 .await
             }
-            IntentsCmd::AddSignal { id, signals } => {
-                commands::intents::add_signal(&id, &signals).await
+            IntentsCmd::AddSignal { id, signals, data_date } => {
+                commands::intents::add_signal(&id, &signals, data_date.as_deref()).await
             }
-            IntentsCmd::RemoveSignal { id, signals } => {
-                commands::intents::remove_signal(&id, &signals).await
+            IntentsCmd::RemoveSignal { id, signals, data_date } => {
+                commands::intents::remove_signal(&id, &signals, data_date.as_deref()).await
             }
-            IntentsCmd::SetScope { id, scope } => {
-                commands::intents::set_scope(&id, &scope).await
+            IntentsCmd::SetScope { id, scope, data_date } => {
+                commands::intents::set_scope(&id, &scope, data_date.as_deref()).await
             }
             IntentsCmd::Consolidate {
                 target_id,
@@ -1116,6 +1390,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
                 scope_strategy,
                 signals_strategy,
                 dry_run,
+                data_date,
             } => {
                 commands::intents::consolidate(
                     &target_id,
@@ -1124,6 +1399,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
                     &scope_strategy,
                     &signals_strategy,
                     dry_run,
+                    data_date.as_deref(),
                 )
                 .await
             }
@@ -1165,15 +1441,30 @@ async fn run(cli: Cli) -> Result<(), CliError> {
         },
         Commands::Teams { command } => match command {
             TeamsCmd::List => commands::teams::list().await,
+            TeamsCmd::Create { name, key, description, created_date } => {
+                commands::teams::create(&name, key.as_deref(), description.as_deref(), created_date.as_deref()).await
+            }
+            TeamsCmd::SetCreatedDate { id, created_date } => {
+                commands::teams::set_created_date(&id, &created_date).await
+            }
         },
         Commands::Projects { command } => match command {
             ProjectsCmd::List { team } => commands::projects::list(team.as_deref()).await,
-            ProjectsCmd::Create { name, team, key, description } => {
-                commands::projects::create(&name, &team, key.as_deref(), description.as_deref()).await
+            ProjectsCmd::Create { name, team, key, description, created_date } => {
+                commands::projects::create(&name, &team, key.as_deref(), description.as_deref(), created_date.as_deref()).await
+            }
+            ProjectsCmd::SetCreatedDate { id, created_date } => {
+                commands::projects::set_created_date(&id, &created_date).await
             }
         },
         Commands::Statuses { command } => match command {
             StatusesCmd::List { team } => commands::statuses::list(team.as_deref()).await,
+            StatusesCmd::Create { team, name, description, category, created_date } => {
+                commands::statuses::create(&team, &name, description.as_deref(), category.as_deref(), created_date.as_deref()).await
+            }
+            StatusesCmd::SetCreatedDate { id, created_date } => {
+                commands::statuses::set_created_date(&id, &created_date).await
+            }
         },
         Commands::Embeddings { command } => match command {
             EmbeddingsCmd::Status => commands::embeddings::status().await,

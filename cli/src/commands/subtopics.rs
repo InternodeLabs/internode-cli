@@ -51,6 +51,7 @@ pub async fn update(
     conclusion: Option<&str>,
     conclusion_type: Option<&str>,
     primary_contributor: Option<&str>,
+    data_date: Option<&str>,
 ) -> Result<(), CliError> {
     let client = ApiClient::new()?;
     let mut body = json!({});
@@ -62,6 +63,9 @@ pub async fn update(
     }
     if let Some(e) = primary_contributor {
         body["primary_contributor_email"] = Value::String(e.to_string());
+    }
+    if let Some(dd) = data_date {
+        body["data_date"] = Value::String(dd.to_string());
     }
     let resp = client.patch(&format!("{BASE}/{id}"), &body).await?;
     output::print_success(resp);

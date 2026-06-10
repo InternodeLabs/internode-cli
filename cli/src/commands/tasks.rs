@@ -39,6 +39,56 @@ pub async fn list(
 }
 
 #[allow(clippy::too_many_arguments)]
+pub async fn create(
+    title: &str,
+    description: Option<&str>,
+    priority: Option<&str>,
+    assignee: Option<&str>,
+    due_date: Option<&str>,
+    status: Option<&str>,
+    team: Option<&str>,
+    project: Option<&str>,
+    parent: Option<&str>,
+    task_type: Option<&str>,
+    data_date: Option<&str>,
+) -> Result<(), CliError> {
+    let client = ApiClient::new()?;
+    let mut body = json!({ "task_title": title });
+    if let Some(d) = description { body["description"] = Value::String(d.to_string()); }
+    if let Some(p) = priority { body["priority"] = Value::String(p.to_string()); }
+    if let Some(a) = assignee { body["assignee_email"] = Value::String(a.to_string()); }
+    if let Some(dd) = due_date { body["due_date"] = Value::String(dd.to_string()); }
+    if let Some(s) = status { body["oistatus_id"] = Value::String(s.to_string()); }
+    if let Some(t) = team { body["oiteam_id"] = Value::String(t.to_string()); }
+    if let Some(p) = project { body["oiproject_id"] = Value::String(p.to_string()); }
+    if let Some(p) = parent { body["oiparent_task_id"] = Value::String(p.to_string()); }
+    if let Some(tt) = task_type { body["task_type"] = Value::String(tt.to_string()); }
+    if let Some(dd) = data_date { body["data_date"] = Value::String(dd.to_string()); }
+    let resp = client.post(BASE, &body).await?;
+    output::print_success(resp);
+    Ok(())
+}
+
+pub async fn version_set_date(version_id: &str, data_date: &str) -> Result<(), CliError> {
+    let client = ApiClient::new()?;
+    let body = json!({ "data_date": data_date });
+    let resp = client
+        .post(&format!("{BASE}/versions/{version_id}/set-date"), &body)
+        .await?;
+    output::print_success(resp);
+    Ok(())
+}
+
+pub async fn version_delete(version_id: &str) -> Result<(), CliError> {
+    let client = ApiClient::new()?;
+    let resp = client
+        .post(&format!("{BASE}/versions/{version_id}/delete"), &json!({}))
+        .await?;
+    output::print_success(resp);
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
 pub async fn update(
     id: &str,
     title: Option<&str>,
@@ -54,6 +104,7 @@ pub async fn update(
     task_type: Option<&str>,
     parent: Option<&str>,
     clear_parent: bool,
+    data_date: Option<&str>,
 ) -> Result<(), CliError> {
     let client = ApiClient::new()?;
     let mut body = json!({});
@@ -68,6 +119,7 @@ pub async fn update(
     if let Some(n) = user_notes { body["user_notes"] = Value::String(n.to_string()); }
     if let Some(b) = blocked_by_reason { body["blocked_by_reason"] = Value::String(b.to_string()); }
     if let Some(tt) = task_type { body["task_type"] = Value::String(tt.to_string()); }
+    if let Some(dd) = data_date { body["data_date"] = Value::String(dd.to_string()); }
     // HAS_SUBTASK re-parenting: --clear-parent detaches (empty string), else
     // --parent re-parents. They are mutually exclusive.
     if clear_parent {

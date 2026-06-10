@@ -31,12 +31,36 @@ pub async fn inspect(id: &str) -> Result<(), CliError> {
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
+pub async fn create(
+    title: &str,
+    description: Option<&str>,
+    category: Option<i64>,
+    conclusion: Option<&str>,
+    conclusion_type: Option<&str>,
+    primary_contributor: Option<&str>,
+    data_date: Option<&str>,
+) -> Result<(), CliError> {
+    let client = ApiClient::new()?;
+    let mut body = json!({ "topic_title": title });
+    if let Some(d) = description { body["topic_description"] = Value::String(d.to_string()); }
+    if let Some(c) = category { body["category_index"] = Value::Number(c.into()); }
+    if let Some(c) = conclusion { body["topic_conclusion"] = Value::String(c.to_string()); }
+    if let Some(c) = conclusion_type { body["topic_conclusion_type"] = Value::String(c.to_string()); }
+    if let Some(e) = primary_contributor { body["primary_contributor_email"] = Value::String(e.to_string()); }
+    if let Some(dd) = data_date { body["data_date"] = Value::String(dd.to_string()); }
+    let resp = client.post(BASE, &body).await?;
+    output::print_success(resp);
+    Ok(())
+}
+
 pub async fn update(
     id: &str,
     title: Option<&str>,
     description: Option<&str>,
     category: Option<i64>,
     primary_contributor: Option<&str>,
+    data_date: Option<&str>,
 ) -> Result<(), CliError> {
     let client = ApiClient::new()?;
     let mut body = json!({});
@@ -44,6 +68,7 @@ pub async fn update(
     if let Some(d) = description { body["topic_description"] = Value::String(d.to_string()); }
     if let Some(c) = category { body["category_index"] = Value::Number(c.into()); }
     if let Some(e) = primary_contributor { body["primary_contributor_email"] = Value::String(e.to_string()); }
+    if let Some(dd) = data_date { body["data_date"] = Value::String(dd.to_string()); }
     let resp = client.patch(&format!("{BASE}/{id}"), &body).await?;
     output::print_success(resp);
     Ok(())

@@ -29,6 +29,51 @@ pub async fn inspect(id: &str) -> Result<(), CliError> {
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
+pub async fn create(
+    title: &str,
+    description: Option<&str>,
+    rationale: Option<&str>,
+    status: Option<&str>,
+    decision_maker: Option<&str>,
+    decision_type: Option<&str>,
+    priority: Option<&str>,
+    data_date: Option<&str>,
+) -> Result<(), CliError> {
+    let client = ApiClient::new()?;
+    let mut body = json!({ "decision_title": title });
+    if let Some(d) = description { body["description"] = Value::String(d.to_string()); }
+    if let Some(r) = rationale { body["rationale"] = Value::String(r.to_string()); }
+    if let Some(s) = status { body["decision_status"] = Value::String(s.to_string()); }
+    if let Some(m) = decision_maker { body["decision_maker_email"] = Value::String(m.to_string()); }
+    if let Some(t) = decision_type { body["decision_type"] = Value::String(t.to_string()); }
+    if let Some(p) = priority { body["priority"] = Value::String(p.to_string()); }
+    if let Some(dd) = data_date { body["data_date"] = Value::String(dd.to_string()); }
+    let resp = client.post(BASE, &body).await?;
+    output::print_success(resp);
+    Ok(())
+}
+
+pub async fn version_set_date(version_id: &str, data_date: &str) -> Result<(), CliError> {
+    let client = ApiClient::new()?;
+    let body = json!({ "data_date": data_date });
+    let resp = client
+        .post(&format!("{BASE}/versions/{version_id}/set-date"), &body)
+        .await?;
+    output::print_success(resp);
+    Ok(())
+}
+
+pub async fn version_delete(version_id: &str) -> Result<(), CliError> {
+    let client = ApiClient::new()?;
+    let resp = client
+        .post(&format!("{BASE}/versions/{version_id}/delete"), &json!({}))
+        .await?;
+    output::print_success(resp);
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
 pub async fn update(
     id: &str,
     title: Option<&str>,
@@ -38,6 +83,7 @@ pub async fn update(
     decision_maker: Option<&str>,
     decision_type: Option<&str>,
     priority: Option<&str>,
+    data_date: Option<&str>,
 ) -> Result<(), CliError> {
     let client = ApiClient::new()?;
     let mut body = json!({});
@@ -48,6 +94,7 @@ pub async fn update(
     if let Some(m) = decision_maker { body["decision_maker_email"] = Value::String(m.to_string()); }
     if let Some(dt) = decision_type { body["decision_type"] = Value::String(dt.to_string()); }
     if let Some(p) = priority { body["priority"] = Value::String(p.to_string()); }
+    if let Some(dd) = data_date { body["data_date"] = Value::String(dd.to_string()); }
     let resp = client.patch(&format!("{BASE}/{id}"), &body).await?;
     output::print_success(resp);
     Ok(())

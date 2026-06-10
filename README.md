@@ -85,7 +85,9 @@ All commands output structured JSON on stdout. Diagnostics go to stderr.
 internode topics list
 internode topics list --search "authentication" --category 2 --limit 20
 internode topics inspect <topic_id>                                  # uncapped relationship dump
+internode topics create  --title "..." --category 5 --data-date 2025-03-14  # net-new, optionally backdated
 internode topics update  <topic_id> --title "..." --category 5
+internode topics update  <topic_id> --title "..." --data-date 2025-03-14  # stamp the new version with a historical date
 internode topics archive <topic_id>                                  # soft-delete
 internode topics merge   <source_topic_id> --into <target_topic_id>  # absorb every sub-topic, then archive source
 ```
@@ -99,7 +101,17 @@ internode subtopics list --type Problem --limit 10
 internode subtopics inspect <sub_topic_id>
 internode subtopics move    <sub_topic_id> --to-topic <target_topic_id>
 internode subtopics archive <sub_topic_id>
+internode subtopics update  <sub_topic_id> --conclusion "..." --data-date 2025-03-14  # revise with a historical date
 ```
+
+> **Historical dates (`--data-date`):** every `update` command above accepts an
+> optional `--data-date <ISO-8601>` (e.g. `2025-03-14` or `2025-03-14T10:00:00Z`).
+> It stamps the newly-appended version with that historical date instead of
+> "now", preserving the true timeline. Setting it inserts the version into the
+> chain at the right point by date. You may pass `--data-date` alone (no content
+> change) to append a date-corrected version. An unparseable value returns 422.
+> For `split` plans, add a `"data_date"` key inside any `new_topic` /
+> `new_decision` / `new_intent` object to backdate the entity it creates.
 
 ### Tasks
 
@@ -112,6 +124,12 @@ internode tasks update <id> --priority medium --assignee user@example.com
 internode tasks update <id> --team <team_id> --project <project_id>
 internode tasks update <id> --status <status_id> --due-date 2026-04-01
 internode tasks update <id> --user-notes "Blocked on review" --type action_item
+internode tasks update <id> --data-date 2025-03-14          # stamp the new version with a historical date
+internode tasks create --title "..." --team <team_id> --data-date 2025-03-14  # net-new, optionally backdated
+
+# Per-version history fixes (append-only chain): re-date or remove one bad version, then auto-repair
+internode tasks version set-date <version_id> --data-date 2025-03-14
+internode tasks version delete   <version_id>
 ```
 
 ### Decisions
@@ -120,9 +138,15 @@ internode tasks update <id> --user-notes "Blocked on review" --type action_item
 internode decisions list
 internode decisions list --search "pricing model" --limit 10
 internode decisions inspect <decision_id>
+internode decisions create  --title "..." --status "approved" --data-date 2025-03-14  # net-new (link edges after)
 internode decisions update  <decision_id> --title "..." --rationale "..." --status "approved"
+internode decisions update  <decision_id> --data-date 2025-03-14  # stamp the new version with a historical date
 internode decisions archive <decision_id>
 internode decisions merge   <source_decision_id> --into <target_decision_id>
+
+# Per-version history fixes (append-only chain): re-date or remove one bad version, then auto-repair
+internode decisions version set-date <version_id> --data-date 2025-03-14
+internode decisions version delete   <version_id>
 
 # Edge link/unlink — pass exactly one of --sub-topic, --task, --intent
 internode decisions link   <decision_id> --sub-topic <sid> --type RATIFIES
@@ -141,10 +165,25 @@ internode decisions unlink <decision_id> --intent <intent_id>
 internode intents list
 internode intents list --limit 50
 internode intents inspect <intent_id>
+internode intents create  --title "..." --signal "ARR" --signal "growth" --data-date 2025-03-14  # net-new, optionally backdated
 internode intents update  <intent_id> --title "..." --signals "ARR,growth"
+internode intents update  <intent_id> --data-date 2025-03-14  # stamp the new version with a historical date
 internode intents archive <intent_id>
 internode intents merge   <source_intent_id> --into <target_intent_id>
+internode intents set-scope    <intent_id> "team-wide" --data-date 2025-03-14
+internode intents add-signal   <intent_id> --signal "churn" --data-date 2025-03-14
+internode intents remove-signal <intent_id> --signal "churn" --data-date 2025-03-14
+internode intents consolidate --into <target_intent_id> --source <src1> --source <src2> --data-date 2025-03-14
+
+# Per-version history fixes (append-only chain): re-date or remove one bad version, then auto-repair
+internode intents version set-date <version_id> --data-date 2025-03-14
+internode intents version delete   <version_id>
 ```
+
+> Every intent op that writes a new version (`update`, `set-scope`, `add-signal`,
+> `remove-signal`, `consolidate`) accepts `--data-date <ISO-8601>` to stamp that
+> version with a historical date instead of "now". `version set-date` / `version
+> delete` correct a single already-written version in place (decisions/intents/tasks).
 
 ### Diagnose V2 reconciliation noise
 
@@ -188,11 +227,22 @@ internode entity get <id1> <id2> <id3>
 
 ```bash
 internode teams list
+internode teams create --name "Platform" --created-date 2025-01-01     # optionally backdated
+internode teams set-created-date <team_id> --created-date 2025-01-01   # fix an existing team
+
 internode projects list --team <team_id>
 internode projects create --name "v2" --team <team_id>
-internode projects create --name "v2" --team <team_id> --key PRJ --description "Version 2"
+internode projects create --name "v2" --team <team_id> --key PRJ --description "Version 2" --created-date 2025-01-01
+internode projects set-created-date <project_id> --created-date 2025-01-01
+
 internode statuses list --team <team_id>
+internode statuses create --team <team_id> --name "In Review" --category in_progress --created-date 2025-01-01
+internode statuses set-created-date <status_id> --created-date 2025-01-01
 ```
+
+> Root entities (teams, projects, statuses) are not versioned — their history is the single
+> `created_at` timestamp. `--created-date` sets it at creation; `set-created-date` corrects it on
+> an existing root (e.g. one a cleanup pass stamped with today's date).
 
 ### Search
 

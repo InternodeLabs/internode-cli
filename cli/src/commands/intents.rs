@@ -24,12 +24,53 @@ pub async fn inspect(id: &str) -> Result<(), CliError> {
     Ok(())
 }
 
+pub async fn create(
+    title: &str,
+    statement: Option<&str>,
+    scope: Option<&str>,
+    signals: &[String],
+    data_date: Option<&str>,
+) -> Result<(), CliError> {
+    let client = ApiClient::new()?;
+    let mut body = json!({ "intent_title": title });
+    if let Some(s) = statement { body["statement"] = Value::String(s.to_string()); }
+    if let Some(s) = scope { body["scope"] = Value::String(s.to_string()); }
+    if !signals.is_empty() {
+        body["signals"] =
+            Value::Array(signals.iter().map(|s| Value::String(s.clone())).collect());
+    }
+    if let Some(dd) = data_date { body["data_date"] = Value::String(dd.to_string()); }
+    let resp = client.post(BASE, &body).await?;
+    output::print_success(resp);
+    Ok(())
+}
+
+pub async fn version_set_date(version_id: &str, data_date: &str) -> Result<(), CliError> {
+    let client = ApiClient::new()?;
+    let body = json!({ "data_date": data_date });
+    let resp = client
+        .post(&format!("{BASE}/versions/{version_id}/set-date"), &body)
+        .await?;
+    output::print_success(resp);
+    Ok(())
+}
+
+pub async fn version_delete(version_id: &str) -> Result<(), CliError> {
+    let client = ApiClient::new()?;
+    let resp = client
+        .post(&format!("{BASE}/versions/{version_id}/delete"), &json!({}))
+        .await?;
+    output::print_success(resp);
+    Ok(())
+}
+
 pub async fn update(
     id: &str,
     title: Option<&str>,
     statement: Option<&str>,
     scope: Option<&str>,
     signals: Option<&str>,
+    data_date: Option<&str>,
 ) -> Result<(), CliError> {
     let client = ApiClient::new()?;
     let mut body = json!({});
@@ -44,6 +85,7 @@ pub async fn update(
             .collect();
         body["signals"] = Value::Array(parts);
     }
+    if let Some(dd) = data_date { body["data_date"] = Value::String(dd.to_string()); }
     let resp = client.patch(&format!("{BASE}/{id}"), &body).await?;
     output::print_success(resp);
     Ok(())
@@ -64,15 +106,20 @@ pub async fn merge(source_id: &str, target_id: &str) -> Result<(), CliError> {
     Ok(())
 }
 
-pub async fn add_signal(id: &str, signals: &[String]) -> Result<(), CliError> {
+pub async fn add_signal(
+    id: &str,
+    signals: &[String],
+    data_date: Option<&str>,
+) -> Result<(), CliError> {
     if signals.is_empty() {
         return Err(CliError::BadInput(
             "At least one --signal is required.".into(),
         ));
     }
-    let body = json!({
+    let mut body = json!({
         "signals": signals.iter().map(|s| Value::String(s.clone())).collect::<Vec<_>>(),
     });
+    if let Some(dd) = data_date { body["data_date"] = Value::String(dd.to_string()); }
     let client = ApiClient::new()?;
     let resp = client
         .post(&format!("{BASE}/{id}/signals/add"), &body)
@@ -81,15 +128,20 @@ pub async fn add_signal(id: &str, signals: &[String]) -> Result<(), CliError> {
     Ok(())
 }
 
-pub async fn remove_signal(id: &str, signals: &[String]) -> Result<(), CliError> {
+pub async fn remove_signal(
+    id: &str,
+    signals: &[String],
+    data_date: Option<&str>,
+) -> Result<(), CliError> {
     if signals.is_empty() {
         return Err(CliError::BadInput(
             "At least one --signal is required.".into(),
         ));
     }
-    let body = json!({
+    let mut body = json!({
         "signals": signals.iter().map(|s| Value::String(s.clone())).collect::<Vec<_>>(),
     });
+    if let Some(dd) = data_date { body["data_date"] = Value::String(dd.to_string()); }
     let client = ApiClient::new()?;
     let resp = client
         .post(&format!("{BASE}/{id}/signals/remove"), &body)
@@ -98,8 +150,9 @@ pub async fn remove_signal(id: &str, signals: &[String]) -> Result<(), CliError>
     Ok(())
 }
 
-pub async fn set_scope(id: &str, scope: &str) -> Result<(), CliError> {
-    let body = json!({ "scope": scope });
+pub async fn set_scope(id: &str, scope: &str, data_date: Option<&str>) -> Result<(), CliError> {
+    let mut body = json!({ "scope": scope });
+    if let Some(dd) = data_date { body["data_date"] = Value::String(dd.to_string()); }
     let client = ApiClient::new()?;
     let resp = client
         .post(&format!("{BASE}/{id}/set-scope"), &body)
@@ -138,6 +191,7 @@ pub async fn split(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn consolidate(
     target_id: &str,
     source_ids: &[String],
@@ -145,13 +199,14 @@ pub async fn consolidate(
     scope_strategy: &str,
     signals_strategy: &str,
     dry_run: bool,
+    data_date: Option<&str>,
 ) -> Result<(), CliError> {
     if source_ids.is_empty() {
         return Err(CliError::BadInput(
             "At least one --source intent id is required.".into(),
         ));
     }
-    let body = json!({
+    let mut body = json!({
         "target_intent_id": target_id,
         "source_intent_ids": source_ids
             .iter()
@@ -162,6 +217,7 @@ pub async fn consolidate(
         "signals_strategy": signals_strategy,
         "dry_run": dry_run,
     });
+    if let Some(dd) = data_date { body["data_date"] = Value::String(dd.to_string()); }
     let client = ApiClient::new()?;
     let resp = client
         .post(&format!("{BASE}/consolidate"), &body)
