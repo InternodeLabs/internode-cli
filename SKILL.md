@@ -56,7 +56,8 @@ The CLI is **read-heavy with structural-cleanup and repair writes**:
 - **Repair** forked version chains (`repair version-chains`).
 - **Re-align embeddings** (`embeddings status` / `embeddings sync`) — the "commit my changes" step for the knowledge graph.
 - **Create** net-new entities with an optional historical date: topics, decisions, intents, tasks (`<entity> create … --data-date`), plus projects/teams/statuses (`… --created-date`).
-- **Fix a single version in place**: `<decisions|intents|tasks> version set-date <vid> --data-date …` re-dates one version; `… version delete <vid>` soft-deletes one bad version. Both re-linearize the chain by date.
+- **Review full version history**: `<decisions|intents|tasks> history <root_id>` returns the entire version timeline (content + dates + head/deleted flags), not just the head.
+- **Fix a single version in place**: `<decisions|intents|tasks> version set-date <vid> --data-date …` re-dates one version; `… version delete <vid>` soft-deletes one bad version (both re-linearize the chain by date); `… version set-content <vid> --…` overwrites the content of one historical version in place (audit-only unless it's the head; rewrites otherwise-append-only history, so use sparingly).
 - **Fix a root's creation date**: `<projects|teams|statuses> set-created-date <id> --created-date …`.
 - **Gated Cypher**: `cypher run` executes a user-reviewed `.cypher` file behind a per-owner passphrase the agent does not know.
 
@@ -281,6 +282,18 @@ internode intents consolidate --into <target_id> --source <id> [--source <id> ..
 
 > **Preserve history with `--data-date` / `--created-date`:** every command that writes a new version accepts an optional `--data-date <ISO-8601>` (`2025-03-14` or `2025-03-14T10:00:00Z`). This covers `create` and `update` (topics, sub-topics, tasks, decisions, intents), the intent version-writing ops `set-scope`, `add-signal`, `remove-signal`, `consolidate`, and the per-version `version set-date` fix. It stamps the version with that historical date instead of "now", so the timeline reflects when the knowledge actually happened — critical when correcting backfilled or split data. The version is inserted into the chain at the correct point by date. You may pass `--data-date` alone (no content change) to append a date-corrected version. An unparseable value returns 422. In `split` plans, add a `"data_date"` key inside any `new_topic` / `new_decision` / `new_intent` object to backdate the entity it creates (otherwise it defaults to today, which distorts history). Non-versioned roots (projects, teams, statuses) use `--created-date` at create time and `set-created-date` to fix an existing root.
 
+### Reviewing version history (decisions / intents / tasks)
+
+Every other read resolves the single **head** version. To see the *whole* timeline of a single root — every version with its content, `data_date`, `created_at`, and `is_head` / `deleted` flags, ordered chronologically — use `history`:
+
+```bash
+internode decisions history <decision_id>
+internode intents   history <intent_id>
+internode tasks     history <task_id>
+```
+
+Use this to audit how an entity evolved, or to find the exact `version_id` to re-date, delete, or edit. (Topics don't have a single chain — their "versions" are sub-topics; use `topics inspect <id>` to list them.)
+
 ### Per-version history fixes (decisions / intents / tasks)
 
 Versions are append-only, so a date-only `update` adds a *new* correctly-dated version but leaves the wrongly-dated one behind. To correct an individual version in place, use the `version` sub-commands; the live chain is automatically re-linearized by date afterward.
@@ -294,7 +307,21 @@ internode tasks     version set-date <version_id> --data-date "YYYY-MM-DD"
 internode tasks     version delete   <version_id>
 ```
 
-`version delete` is refused (422) when it would remove the only live version of an entity — archive the root instead. Find version ids with `entity get <root_id>` or `<entity> inspect <id>`.
+`version delete` is refused (422) when it would remove the only live version of an entity — archive the root instead. Find version ids with `entity get <root_id>`, `<entity> inspect <id>`, or `<entity> history <root_id>`.
+
+#### Editing the *content* of a historical version in place (`version set-content`)
+
+`set-content` overwrites content fields on **one specific version** — the escape hatch for fixing wrong/backfilled/imported text in history without appending a new version.
+
+```bash
+internode decisions version set-content <version_id> [--title ...] [--description ...] [--rationale ...] [--status ...] [--decision-maker email] [--type explicit|implicit] [--priority ...]
+internode intents   version set-content <version_id> [--title ...] [--statement ...] [--scope ...] [--signal "phrase" --signal ...]
+internode tasks     version set-content <version_id> [--title ...] [--description ...] [--priority ...] [--assignee email] [--due-date "YYYY-MM-DD"] [--blocked-by-reason ...] [--task-type ...]
+```
+
+> **This rewrites history — use it sparingly.** The graph is otherwise append-only by design; for routine revisions prefer `update` (appends a new version) and for genuinely bad versions prefer `version delete`. `set-content` exists for in-place corrections (typos, PII scrubbing, fixing imported junk).
+>
+> **Only the head is embedded.** The response includes `is_head` and `reembedded`. Editing a non-head version is an **audit-only** correction — it does *not* change semantic search or snapshots (those follow the head). Only editing the head re-embeds. Editing a soft-deleted version is refused (422) — restore the root first. Only fields on the version node are editable; edge-backed task attributes (status/team/project/parent) are still changed via `tasks update`.
 
 ### Recovery — restore soft-deleted entities
 

@@ -127,9 +127,14 @@ internode tasks update <id> --user-notes "Blocked on review" --type action_item
 internode tasks update <id> --data-date 2025-03-14          # stamp the new version with a historical date
 internode tasks create --title "..." --team <team_id> --data-date 2025-03-14  # net-new, optionally backdated
 
+# Review the full version timeline (every version, head/deleted flags)
+internode tasks history <task_id>
+
 # Per-version history fixes (append-only chain): re-date or remove one bad version, then auto-repair
 internode tasks version set-date <version_id> --data-date 2025-03-14
 internode tasks version delete   <version_id>
+# Overwrite one historical version's content in place (audit-only unless it's the head)
+internode tasks version set-content <version_id> --title "..." --priority high
 ```
 
 ### Decisions
@@ -144,9 +149,14 @@ internode decisions update  <decision_id> --data-date 2025-03-14  # stamp the ne
 internode decisions archive <decision_id>
 internode decisions merge   <source_decision_id> --into <target_decision_id>
 
+# Review the full version timeline (every version, head/deleted flags)
+internode decisions history <decision_id>
+
 # Per-version history fixes (append-only chain): re-date or remove one bad version, then auto-repair
 internode decisions version set-date <version_id> --data-date 2025-03-14
 internode decisions version delete   <version_id>
+# Overwrite one historical version's content in place (audit-only unless it's the head)
+internode decisions version set-content <version_id> --title "..." --rationale "..."
 
 # Edge link/unlink — pass exactly one of --sub-topic, --task, --intent
 internode decisions link   <decision_id> --sub-topic <sid> --type RATIFIES
@@ -175,15 +185,22 @@ internode intents add-signal   <intent_id> --signal "churn" --data-date 2025-03-
 internode intents remove-signal <intent_id> --signal "churn" --data-date 2025-03-14
 internode intents consolidate --into <target_intent_id> --source <src1> --source <src2> --data-date 2025-03-14
 
+# Review the full version timeline (every version, head/deleted flags)
+internode intents history <intent_id>
+
 # Per-version history fixes (append-only chain): re-date or remove one bad version, then auto-repair
 internode intents version set-date <version_id> --data-date 2025-03-14
 internode intents version delete   <version_id>
+# Overwrite one historical version's content in place (audit-only unless it's the head)
+internode intents version set-content <version_id> --statement "..." --signal "ARR" --signal "growth"
 ```
 
 > Every intent op that writes a new version (`update`, `set-scope`, `add-signal`,
 > `remove-signal`, `consolidate`) accepts `--data-date <ISO-8601>` to stamp that
-> version with a historical date instead of "now". `version set-date` / `version
-> delete` correct a single already-written version in place (decisions/intents/tasks).
+> version with a historical date instead of "now". `<entity> history <root_id>`
+> dumps the whole timeline; `version set-date` / `version delete` correct a single
+> already-written version in place, and `version set-content` overwrites one
+> historical version's content (rewrites history — audit-only unless it's the head).
 
 ### Diagnose V2 reconciliation noise
 

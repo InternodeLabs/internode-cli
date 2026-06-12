@@ -64,6 +64,36 @@ pub async fn version_delete(version_id: &str) -> Result<(), CliError> {
     Ok(())
 }
 
+pub async fn history(id: &str) -> Result<(), CliError> {
+    let client = ApiClient::new()?;
+    let resp = client.get(&format!("{BASE}/{id}/history")).await?;
+    output::print_success(resp);
+    Ok(())
+}
+
+pub async fn version_set_content(
+    version_id: &str,
+    title: Option<&str>,
+    statement: Option<&str>,
+    scope: Option<&str>,
+    signals: &[String],
+) -> Result<(), CliError> {
+    let client = ApiClient::new()?;
+    let mut body = json!({});
+    if let Some(t) = title { body["intent_title"] = Value::String(t.to_string()); }
+    if let Some(s) = statement { body["statement"] = Value::String(s.to_string()); }
+    if let Some(s) = scope { body["scope"] = Value::String(s.to_string()); }
+    if !signals.is_empty() {
+        body["signals"] =
+            Value::Array(signals.iter().map(|s| Value::String(s.clone())).collect());
+    }
+    let resp = client
+        .post(&format!("{BASE}/versions/{version_id}/set-content"), &body)
+        .await?;
+    output::print_success(resp);
+    Ok(())
+}
+
 pub async fn update(
     id: &str,
     title: Option<&str>,

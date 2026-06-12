@@ -88,6 +88,40 @@ pub async fn version_delete(version_id: &str) -> Result<(), CliError> {
     Ok(())
 }
 
+pub async fn history(id: &str) -> Result<(), CliError> {
+    let client = ApiClient::new()?;
+    let resp = client.get(&format!("{BASE}/{id}/history")).await?;
+    output::print_success(resp);
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn version_set_content(
+    version_id: &str,
+    title: Option<&str>,
+    description: Option<&str>,
+    priority: Option<&str>,
+    assignee: Option<&str>,
+    due_date: Option<&str>,
+    blocked_by_reason: Option<&str>,
+    task_type: Option<&str>,
+) -> Result<(), CliError> {
+    let client = ApiClient::new()?;
+    let mut body = json!({});
+    if let Some(t) = title { body["task_title"] = Value::String(t.to_string()); }
+    if let Some(d) = description { body["description"] = Value::String(d.to_string()); }
+    if let Some(p) = priority { body["priority"] = Value::String(p.to_string()); }
+    if let Some(a) = assignee { body["assignee_email"] = Value::String(a.to_string()); }
+    if let Some(dd) = due_date { body["due_date"] = Value::String(dd.to_string()); }
+    if let Some(b) = blocked_by_reason { body["blocked_by_reason"] = Value::String(b.to_string()); }
+    if let Some(tt) = task_type { body["task_type"] = Value::String(tt.to_string()); }
+    let resp = client
+        .post(&format!("{BASE}/versions/{version_id}/set-content"), &body)
+        .await?;
+    output::print_success(resp);
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
 pub async fn update(
     id: &str,

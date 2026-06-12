@@ -73,6 +73,40 @@ pub async fn version_delete(version_id: &str) -> Result<(), CliError> {
     Ok(())
 }
 
+pub async fn history(id: &str) -> Result<(), CliError> {
+    let client = ApiClient::new()?;
+    let resp = client.get(&format!("{BASE}/{id}/history")).await?;
+    output::print_success(resp);
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn version_set_content(
+    version_id: &str,
+    title: Option<&str>,
+    description: Option<&str>,
+    rationale: Option<&str>,
+    status: Option<&str>,
+    decision_maker: Option<&str>,
+    decision_type: Option<&str>,
+    priority: Option<&str>,
+) -> Result<(), CliError> {
+    let client = ApiClient::new()?;
+    let mut body = json!({});
+    if let Some(t) = title { body["decision_title"] = Value::String(t.to_string()); }
+    if let Some(d) = description { body["description"] = Value::String(d.to_string()); }
+    if let Some(r) = rationale { body["rationale"] = Value::String(r.to_string()); }
+    if let Some(s) = status { body["decision_status"] = Value::String(s.to_string()); }
+    if let Some(m) = decision_maker { body["decision_maker_email"] = Value::String(m.to_string()); }
+    if let Some(dt) = decision_type { body["decision_type"] = Value::String(dt.to_string()); }
+    if let Some(p) = priority { body["priority"] = Value::String(p.to_string()); }
+    let resp = client
+        .post(&format!("{BASE}/versions/{version_id}/set-content"), &body)
+        .await?;
+    output::print_success(resp);
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
 pub async fn update(
     id: &str,

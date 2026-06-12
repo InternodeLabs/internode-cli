@@ -310,10 +310,10 @@ enum AuthCmd {
 }
 
 #[derive(Subcommand)]
-enum VersionCmd {
+enum DecisionVersionCmd {
     /// Re-date a single version in place, then re-linearize the chain by date
     SetDate {
-        /// Version id (e.g. oidecisionv_…, oiintentv_…, oitaskv_…)
+        /// Version id (e.g. oidecisionv_…)
         version_id: String,
         /// Historical ISO-8601 date (e.g. 2025-03-14 or 2025-03-14T10:00:00Z)
         #[arg(long = "data-date")]
@@ -323,6 +323,102 @@ enum VersionCmd {
     Delete {
         /// Version id to soft-delete
         version_id: String,
+    },
+    /// Overwrite content fields on ONE version in place. This REWRITES history
+    /// (the model is otherwise append-only) and only affects search when the
+    /// edited version is the live head — otherwise it is an audit-only fix.
+    SetContent {
+        /// OIDecisionVersion id to edit
+        version_id: String,
+        #[arg(long)]
+        title: Option<String>,
+        #[arg(long)]
+        description: Option<String>,
+        #[arg(long)]
+        rationale: Option<String>,
+        #[arg(long)]
+        status: Option<String>,
+        #[arg(long = "decision-maker")]
+        decision_maker: Option<String>,
+        /// Decision type (explicit | implicit)
+        #[arg(long = "type")]
+        decision_type: Option<String>,
+        #[arg(long)]
+        priority: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum IntentVersionCmd {
+    /// Re-date a single version in place, then re-linearize the chain by date
+    SetDate {
+        /// Version id (e.g. oiintentv_…)
+        version_id: String,
+        /// Historical ISO-8601 date (e.g. 2025-03-14 or 2025-03-14T10:00:00Z)
+        #[arg(long = "data-date")]
+        data_date: String,
+    },
+    /// Soft-delete a single version (refused if it is the only live version)
+    Delete {
+        /// Version id to soft-delete
+        version_id: String,
+    },
+    /// Overwrite content fields on ONE version in place. This REWRITES history
+    /// (the model is otherwise append-only) and only affects search when the
+    /// edited version is the live head — otherwise it is an audit-only fix.
+    SetContent {
+        /// OIIntentVersion id to edit
+        version_id: String,
+        #[arg(long)]
+        title: Option<String>,
+        #[arg(long)]
+        statement: Option<String>,
+        #[arg(long)]
+        scope: Option<String>,
+        /// Replacement signal phrase (repeatable). Replaces the version's
+        /// signal list wholesale when any --signal is provided.
+        #[arg(long = "signal")]
+        signals: Vec<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum TaskVersionCmd {
+    /// Re-date a single version in place, then re-linearize the chain by date
+    SetDate {
+        /// Version id (e.g. oitaskv_…)
+        version_id: String,
+        /// Historical ISO-8601 date (e.g. 2025-03-14 or 2025-03-14T10:00:00Z)
+        #[arg(long = "data-date")]
+        data_date: String,
+    },
+    /// Soft-delete a single version (refused if it is the only live version)
+    Delete {
+        /// Version id to soft-delete
+        version_id: String,
+    },
+    /// Overwrite content fields on ONE version in place. This REWRITES history
+    /// (the model is otherwise append-only) and only affects search when the
+    /// edited version is the live head — otherwise it is an audit-only fix.
+    /// Edge-backed attributes (status/team/project/parent) are edited on the
+    /// root via `tasks update`, not here.
+    SetContent {
+        /// OITaskVersion id to edit
+        version_id: String,
+        #[arg(long)]
+        title: Option<String>,
+        #[arg(long)]
+        description: Option<String>,
+        #[arg(long)]
+        priority: Option<String>,
+        #[arg(long)]
+        assignee: Option<String>,
+        #[arg(long = "due-date")]
+        due_date: Option<String>,
+        #[arg(long = "blocked-by-reason")]
+        blocked_by_reason: Option<String>,
+        #[arg(long = "type")]
+        task_type: Option<String>,
     },
 }
 
@@ -527,10 +623,15 @@ enum TasksCmd {
         #[arg(long = "data-date")]
         data_date: Option<String>,
     },
-    /// Per-version history fixes (set-date / delete) for OITaskVersion nodes
+    /// Review the full version timeline of one task (every version, head/deleted flags)
+    History {
+        /// OITask id
+        id: String,
+    },
+    /// Per-version history fixes (set-date / delete / set-content) for OITaskVersion nodes
     Version {
         #[command(subcommand)]
-        command: VersionCmd,
+        command: TaskVersionCmd,
     },
     /// Update an existing task
     Update {
@@ -623,10 +724,15 @@ enum DecisionsCmd {
         #[arg(long = "data-date")]
         data_date: Option<String>,
     },
-    /// Per-version history fixes (set-date / delete) for OIDecisionVersion nodes
+    /// Review the full version timeline of one decision (every version, head/deleted flags)
+    History {
+        /// OIDecision id
+        id: String,
+    },
+    /// Per-version history fixes (set-date / delete / set-content) for OIDecisionVersion nodes
     Version {
         #[command(subcommand)]
-        command: VersionCmd,
+        command: DecisionVersionCmd,
     },
     /// Update decision scalar fields
     Update {
@@ -761,10 +867,15 @@ enum IntentsCmd {
         #[arg(long = "data-date")]
         data_date: Option<String>,
     },
-    /// Per-version history fixes (set-date / delete) for OIIntentVersion nodes
+    /// Review the full version timeline of one intent (every version, head/deleted flags)
+    History {
+        /// OIIntent id
+        id: String,
+    },
+    /// Per-version history fixes (set-date / delete / set-content) for OIIntentVersion nodes
     Version {
         #[command(subcommand)]
-        command: VersionCmd,
+        command: IntentVersionCmd,
     },
     /// Update intent scalar fields
     Update {
@@ -1219,12 +1330,23 @@ async fn run(cli: Cli) -> Result<(), CliError> {
                     task_type.as_deref(), data_date.as_deref(),
                 ).await
             }
+            TasksCmd::History { id } => commands::tasks::history(&id).await,
             TasksCmd::Version { command } => match command {
-                VersionCmd::SetDate { version_id, data_date } => {
+                TaskVersionCmd::SetDate { version_id, data_date } => {
                     commands::tasks::version_set_date(&version_id, &data_date).await
                 }
-                VersionCmd::Delete { version_id } => {
+                TaskVersionCmd::Delete { version_id } => {
                     commands::tasks::version_delete(&version_id).await
+                }
+                TaskVersionCmd::SetContent {
+                    version_id, title, description, priority, assignee,
+                    due_date, blocked_by_reason, task_type,
+                } => {
+                    commands::tasks::version_set_content(
+                        &version_id, title.as_deref(), description.as_deref(),
+                        priority.as_deref(), assignee.as_deref(), due_date.as_deref(),
+                        blocked_by_reason.as_deref(), task_type.as_deref(),
+                    ).await
                 }
             },
             TasksCmd::Update { id, title, description, priority, assignee, due_date, status, team, project, user_notes, blocked_by_reason, task_type, parent, clear_parent, data_date } => {
@@ -1259,12 +1381,24 @@ async fn run(cli: Cli) -> Result<(), CliError> {
                 )
                 .await
             }
+            DecisionsCmd::History { id } => commands::decisions::history(&id).await,
             DecisionsCmd::Version { command } => match command {
-                VersionCmd::SetDate { version_id, data_date } => {
+                DecisionVersionCmd::SetDate { version_id, data_date } => {
                     commands::decisions::version_set_date(&version_id, &data_date).await
                 }
-                VersionCmd::Delete { version_id } => {
+                DecisionVersionCmd::Delete { version_id } => {
                     commands::decisions::version_delete(&version_id).await
+                }
+                DecisionVersionCmd::SetContent {
+                    version_id, title, description, rationale, status,
+                    decision_maker, decision_type, priority,
+                } => {
+                    commands::decisions::version_set_content(
+                        &version_id, title.as_deref(), description.as_deref(),
+                        rationale.as_deref(), status.as_deref(),
+                        decision_maker.as_deref(), decision_type.as_deref(),
+                        priority.as_deref(),
+                    ).await
                 }
             },
             DecisionsCmd::Update {
@@ -1359,12 +1493,21 @@ async fn run(cli: Cli) -> Result<(), CliError> {
                 )
                 .await
             }
+            IntentsCmd::History { id } => commands::intents::history(&id).await,
             IntentsCmd::Version { command } => match command {
-                VersionCmd::SetDate { version_id, data_date } => {
+                IntentVersionCmd::SetDate { version_id, data_date } => {
                     commands::intents::version_set_date(&version_id, &data_date).await
                 }
-                VersionCmd::Delete { version_id } => {
+                IntentVersionCmd::Delete { version_id } => {
                     commands::intents::version_delete(&version_id).await
+                }
+                IntentVersionCmd::SetContent {
+                    version_id, title, statement, scope, signals,
+                } => {
+                    commands::intents::version_set_content(
+                        &version_id, title.as_deref(), statement.as_deref(),
+                        scope.as_deref(), &signals,
+                    ).await
                 }
             },
             IntentsCmd::Update { id, title, statement, scope, signals, data_date } => {
