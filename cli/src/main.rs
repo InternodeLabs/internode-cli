@@ -279,6 +279,28 @@ Notes:
         #[arg(long = "max-tokens")]
         max_tokens: Option<i64>,
     },
+    /// Incremental change feed: which OI roots changed since a cutoff
+    #[command(
+        after_help = "Examples:
+  internode changes
+  internode changes --since 2025-03-14T10:00:00Z
+  internode changes --since 2025-03-14 --types OITopic,OIIntent
+
+Notes:
+  Returns {id, type, change, at, content_hash} per changed root, where
+  change is created | updated | archived. Omit --since for a full baseline
+  (every live root + its content hash), so a fresh consumer can seed its
+  manifest in one call. Use this to avoid downloading the whole graph:
+  diff content_hash against your last run to find what actually changed."
+    )]
+    Changes {
+        /// ISO-8601 cutoff (e.g. 2025-03-14 or 2025-03-14T10:00:00Z). Omit for a full baseline.
+        #[arg(long)]
+        since: Option<String>,
+        /// Comma-separated subset of OITopic,OIIntent,OIDecision,OITask (default: all)
+        #[arg(long)]
+        types: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -1504,6 +1526,9 @@ async fn run(cli: Cli) -> Result<(), CliError> {
         }
         Commands::Context { max_tokens } => {
             commands::context::context(max_tokens).await
+        }
+        Commands::Changes { since, types } => {
+            commands::changes::changes(since.as_deref(), types.as_deref()).await
         }
     }
 }

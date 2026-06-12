@@ -256,6 +256,16 @@ internode search "authentication architecture"
 internode context --max-tokens 4000
 ```
 
+### Changes (incremental change feed)
+
+Returns which OI roots changed since a cutoff, as `{id, type, change, at, content_hash}` where `change` is `created | updated | archived`. Omit `--since` for a full baseline (every live root + its content hash) so a fresh consumer can seed its state in one call. Use this — plus the `content_hash` now returned on `list` items — to detect exactly what changed instead of downloading the whole graph.
+
+```bash
+internode changes
+internode changes --since 2025-03-14T10:00:00Z
+internode changes --since 2025-03-14 --types OITopic,OIIntent
+```
+
 ## Configuration
 
 Config file: `~/.config/internode/config.toml`

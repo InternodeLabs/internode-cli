@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod changes;
 pub mod context;
 pub mod cypher;
 pub mod decisions;
