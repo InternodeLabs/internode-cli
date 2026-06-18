@@ -374,6 +374,23 @@ internode cypher run <file.cypher> --dry-run   # validate guardrails (EXPLAIN) w
 
 After a real run that mutates content, the API hint suggests `internode embeddings sync` to re-align pgvector. Queries are owner-scoped and guardrailed (denylist + owner-id binding).
 
+#### Authoring guardrail-safe Cypher
+
+The runner enforces **owner isolation**: **every OI node pattern must bind `owner_id: $oid`**. The runner injects the caller's owner id into `$oid` automatically — never hard-code an owner id literal (that fails `BAD_INPUT`). On a violation you get:
+
+```json
+{"ok":false,"error":{"code":"BAD_INPUT","message":"Every OI node pattern must bind owner_id: $oid for owner isolation. Offending pattern: (:OITopic)"}}
+```
+
+Rules to keep a script accepted:
+
+- **Bind `owner_id: $oid` on every labeled OI node**, in *every* clause — `MATCH`, `OPTIONAL MATCH`, and inside variable-length / path patterns. Example: `MATCH (tp:OITopic {owner_id: $oid})-[:HAS_VERSION]->(v {owner_id: $oid})`.
+- **Bind it on intermediate and target nodes too**, not just the anchor — e.g. `-[r:NEXT]->(b {owner_id: $oid})`, not `-[r:NEXT]->()`. A bare `()` or an unbound relationship endpoint that resolves to an OI node will be rejected.
+- **The check scans the raw file text, including comments.** A literal node pattern like `(:OITopic)` written in a `//` comment trips the guardrail. Describe patterns in prose inside comments, or always include `{owner_id: $oid}` even in illustrative snippets.
+- **Use `$oid`, never a literal UUID.** Owner scoping is provided by the runner; passing your own id is both unnecessary and blocked.
+- **Split statements with a line containing only `;`.** Each block is validated and executed independently; `--dry-run` runs `EXPLAIN` on every block without writing.
+- **Always `--dry-run` first** to clear the guardrail (binding + denylist) before the real run.
+
 ## Cleaning up & repairing the graph
 
 Recurring defects you may need to fix:
