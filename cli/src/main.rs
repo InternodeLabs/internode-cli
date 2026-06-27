@@ -31,17 +31,14 @@ enum Commands {
         api_url: Option<String>,
     },
     /// Authentication commands
-    #[command(
-        after_help = "Examples:
-  internode auth status"
-    )]
+    #[command(after_help = "Examples:
+  internode auth status")]
     Auth {
         #[command(subcommand)]
         command: AuthCmd,
     },
     /// Browse and reorganize OI topics
-    #[command(
-        after_help = "Examples:
+    #[command(after_help = "Examples:
   internode topics list
   internode topics list --category 3 --search \"deployment\" --limit 20 --offset 0
   internode topics inspect <topic_id>
@@ -51,15 +48,13 @@ enum Commands {
 
 Tip:
   Run 'internode topics <subcommand> --help' for full argument details.
-  See cleanup workflow in 'internode-cli/SKILL.md'."
-    )]
+  See cleanup workflow in 'internode-cli/SKILL.md'.")]
     Topics {
         #[command(subcommand)]
         command: TopicsCmd,
     },
     /// Browse and reorganize OI sub-topics (Ideas, Problems, Solutions, etc.)
-    #[command(
-        after_help = "Examples:
+    #[command(after_help = "Examples:
   internode subtopics list
   internode subtopics list --type Idea --topic <topic_id> --limit 10
   internode subtopics inspect <sub_topic_id>
@@ -67,30 +62,26 @@ Tip:
   internode subtopics archive <sub_topic_id>
 
 Tip:
-  Run 'internode subtopics <subcommand> --help' for full argument details."
-    )]
+  Run 'internode subtopics <subcommand> --help' for full argument details.")]
     Subtopics {
         #[command(subcommand)]
         command: SubtopicsCmd,
     },
     /// Browse and update OI tasks
-    #[command(
-        after_help = "Examples:
+    #[command(after_help = "Examples:
   internode tasks list
   internode tasks list --team <team_id> --status \"In Progress\" --priority high
   internode tasks update <id> --status <status_id> --assignee \"user@example.com\"
 
 Tips:
   Run 'internode tasks list --help' for list filters.
-  Run 'internode tasks update --help' for mutation fields."
-    )]
+  Run 'internode tasks update --help' for mutation fields.")]
     Tasks {
         #[command(subcommand)]
         command: TasksCmd,
     },
     /// Browse and reorganize OI decisions
-    #[command(
-        after_help = "Examples:
+    #[command(after_help = "Examples:
   internode decisions list
   internode decisions list --search \"pricing model\" --limit 10
   internode decisions inspect <decision_id>
@@ -106,29 +97,25 @@ Tips:
 
 Invariant:
   Every live decision MUST keep ≥1 sub-topic edge AND ≥1 intent edge.
-  Unlinks that would drop either to zero are rejected (HTTP 422)."
-    )]
+  Unlinks that would drop either to zero are rejected (HTTP 422).")]
     Decisions {
         #[command(subcommand)]
         command: DecisionsCmd,
     },
     /// Browse and reorganize OI intents
-    #[command(
-        after_help = "Examples:
+    #[command(after_help = "Examples:
   internode intents list
   internode intents list --limit 50 --offset 0
   internode intents inspect <intent_id>
   internode intents update  <intent_id> --title \"Increase ARR by 50%\" --signals \"ARR,growth\"
   internode intents archive <intent_id>
-  internode intents merge   <source_intent_id> --into <target_intent_id>"
-    )]
+  internode intents merge   <source_intent_id> --into <target_intent_id>")]
     Intents {
         #[command(subcommand)]
         command: IntentsCmd,
     },
     /// Diagnose V2 reconciliation noise (over-linked decisions, duplicate roots, etc.)
-    #[command(
-        after_help = "Examples:
+    #[command(after_help = "Examples:
   internode diagnose decisions --by sub_topics --top 20
   internode diagnose decisions --by tasks --min-edges 10
   internode diagnose topics --by sub_topics --top 30
@@ -137,15 +124,13 @@ Invariant:
 
 Output is uncapped: each item carries the *real* edge count so the
 agent can see the noise (vs. 'entity get' which caps lists at 4).
-Use this BEFORE calling topics/subtopics/decisions/intents mutations."
-    )]
+Use this BEFORE calling topics/subtopics/decisions/intents mutations.")]
     Diagnose {
         #[command(subcommand)]
         command: DiagnoseCmd,
     },
     /// Repair structural corruption in the OI graph
-    #[command(
-        after_help = "Examples:
+    #[command(after_help = "Examples:
   internode repair version-chains --dry-run
   internode repair version-chains
   internode repair version-chains --labels OIDecision,OIIntent
@@ -155,15 +140,13 @@ Notes:
   version-chains re-linearizes forked version histories (multiple heads)
   for single-lineage entities (OIDecision/OIIntent/OITask) by data_date.
   Run 'internode diagnose version-chains' first to preview affected roots,
-  or use --dry-run here. After a real repair, the API re-enqueues embeddings."
-    )]
+  or use --dry-run here. After a real repair, the API re-enqueues embeddings.")]
     Repair {
         #[command(subcommand)]
         command: RepairCmd,
     },
     /// Retrieve detailed entity information (knowledge molecules)
-    #[command(
-        after_help = "Examples:
+    #[command(after_help = "Examples:
   internode entity get oitask_123
   internode entity get oitask_123 oidecision_456 oitopicv_789
   internode entity get oitopic_abc --include-deleted
@@ -183,49 +166,41 @@ Notes:
     4. internode embeddings sync --ids <id>          (optional; restore already enqueues)
 
 Tip:
-  Run 'internode entity get --help' for argument details."
-    )]
+  Run 'internode entity get --help' for argument details.")]
     Entity {
         #[command(subcommand)]
         command: EntityCmd,
     },
     /// Browse OI teams
-    #[command(
-        after_help = "Examples:
-  internode teams list"
-    )]
+    #[command(after_help = "Examples:
+  internode teams list")]
     Teams {
         #[command(subcommand)]
         command: TeamsCmd,
     },
     /// Browse and create OI projects
-    #[command(
-        after_help = "Examples:
+    #[command(after_help = "Examples:
   internode projects list
   internode projects list --team <team_id>
   internode projects create --name \"v2\" --team <team_id> --key PRJ --description \"Version 2\"
 
 Tip:
-  Run 'internode projects create --help' for create arguments."
-    )]
+  Run 'internode projects create --help' for create arguments.")]
     Projects {
         #[command(subcommand)]
         command: ProjectsCmd,
     },
     /// Browse OI statuses
-    #[command(
-        after_help = "Examples:
+    #[command(after_help = "Examples:
   internode statuses list
-  internode statuses list --team <team_id>"
-    )]
+  internode statuses list --team <team_id>")]
     Statuses {
         #[command(subcommand)]
         command: StatusesCmd,
     },
     /// Realign pgvector with Neo4j (drift report + sync). The "commit my changes"
     /// command for the OI knowledge graph.
-    #[command(
-        after_help = "Examples:
+    #[command(after_help = "Examples:
   internode embeddings status
   internode embeddings sync
   internode embeddings sync --scope OITopic
@@ -238,8 +213,7 @@ Notes:
   status   – read-only drift report; safe to run any time.
   sync     – default is synchronous (bounded by --timeout, default 120s).
              --no-wait drops items on the in-process background queue.
-             --dry-run reports the plan without writing."
-    )]
+             --dry-run reports the plan without writing.")]
     Embeddings {
         #[command(subcommand)]
         command: EmbeddingsCmd,
@@ -250,8 +224,7 @@ Notes:
     /// user runs ``internode cypher run <file>`` and types a per-owner
     /// passphrase at the prompt.  Only the user knows the passphrase,
     /// so an agent cannot execute the file it wrote.
-    #[command(
-        after_help = "Examples:
+    #[command(after_help = "Examples:
   internode cypher set-passphrase
   internode cypher run cleanup.cypher
   internode cypher run cleanup.cypher --dry-run
@@ -262,8 +235,7 @@ Notes:
     and prompts for the passphrase.  The passphrase is never echoed
     and is sent only over the HTTPS connection to the API.
   - After a real run that mutates content, the API hint will suggest
-    'internode embeddings sync' to re-align pgvector."
-    )]
+    'internode embeddings sync' to re-align pgvector.")]
     Cypher {
         #[command(subcommand)]
         command: CypherCmd,
@@ -280,8 +252,7 @@ Notes:
         max_tokens: Option<i64>,
     },
     /// Incremental change feed: which OI roots changed since a cutoff
-    #[command(
-        after_help = "Examples:
+    #[command(after_help = "Examples:
   internode changes
   internode changes --since 2025-03-14T10:00:00Z
   internode changes --since 2025-03-14 --types OITopic,OIIntent
@@ -291,8 +262,7 @@ Notes:
   change is created | updated | archived. Omit --since for a full baseline
   (every live root + its content hash), so a fresh consumer can seed its
   manifest in one call. Use this to avoid downloading the whole graph:
-  diff content_hash against your last run to find what actually changed."
-    )]
+  diff content_hash against your last run to find what actually changed.")]
     Changes {
         /// ISO-8601 cutoff (e.g. 2025-03-14 or 2025-03-14T10:00:00Z). Omit for a full baseline.
         #[arg(long)]
@@ -300,6 +270,38 @@ Notes:
         /// Comma-separated subset of OITopic,OIIntent,OIDecision,OITask (default: all)
         #[arg(long)]
         types: Option<String>,
+    },
+    /// Correct a misspelling / bad transcription across ALL your OI data at once
+    #[command(
+        name = "replace-text",
+        after_help = "Examples:
+  internode replace-text \"Qualeon\" \"Qualcomm\"            # dry-run preview (no write)
+  internode replace-text \"Qualeon\" \"Qualcomm\" --apply    # actually rewrite in place
+  internode replace-text \"teh customer\" \"the customer\" --apply
+
+Notes:
+  Replaces SEARCH with REPLACEMENT in every text property of every node you own
+  (titles, descriptions, conclusions, rationale, statements, scope, signals,
+  names, notes, ...), in place — the fix for typos / bad transcriptions.
+
+  SAFETY:
+    - SEARCH must be at least 4 characters long.
+    - Dry-run by default: it previews the matches and writes NOTHING. Pass
+      --apply to perform the rewrite.
+    - Matching is case-sensitive, literal substring.
+    - Identity / structural keys (ids, team keys, short ids, hashes, timestamps)
+      are protected and never modified.
+    - After a real --apply run, run 'internode embeddings sync' to re-align
+      semantic search with the corrected content."
+    )]
+    ReplaceText {
+        /// Substring to find (must be at least 4 characters)
+        search: String,
+        /// Replacement substring (pass "" to delete the search text)
+        replacement: String,
+        /// Actually write the change. Without this it is a dry-run preview.
+        #[arg(long = "apply", default_value_t = false)]
+        apply: bool,
     },
 }
 
@@ -479,9 +481,7 @@ enum TopicsCmd {
         data_date: Option<String>,
     },
     /// Soft-archive a topic (sets deleted=true; sub-topics get re-parented before this)
-    Archive {
-        id: String,
-    },
+    Archive { id: String },
     /// Merge a duplicate source topic into a target topic
     Merge {
         /// Source topic id (will be re-parented then archived)
@@ -758,9 +758,7 @@ enum DecisionsCmd {
         data_date: Option<String>,
     },
     /// Soft-archive a decision
-    Archive {
-        id: String,
-    },
+    Archive { id: String },
     /// Merge a duplicate source decision into a target decision
     Merge {
         /// Source decision id (will be re-edged then archived)
@@ -895,9 +893,7 @@ enum IntentsCmd {
         data_date: Option<String>,
     },
     /// Soft-archive an intent
-    Archive {
-        id: String,
-    },
+    Archive { id: String },
     /// Merge a duplicate source intent into a target intent
     Merge {
         /// Source intent id (will be re-supported then archived)
@@ -1241,11 +1237,22 @@ async fn run(cli: Cli) -> Result<(), CliError> {
             AuthCmd::Status => commands::auth::status().await,
         },
         Commands::Topics { command } => match command {
-            TopicsCmd::List { limit, offset, search, category } => {
-                commands::topics::list(limit, offset, search.as_deref(), category).await
-            }
+            TopicsCmd::List {
+                limit,
+                offset,
+                search,
+                category,
+            } => commands::topics::list(limit, offset, search.as_deref(), category).await,
             TopicsCmd::Inspect { id } => commands::topics::inspect(&id).await,
-            TopicsCmd::Create { title, description, category, conclusion, conclusion_type, primary_contributor, data_date } => {
+            TopicsCmd::Create {
+                title,
+                description,
+                category,
+                conclusion,
+                conclusion_type,
+                primary_contributor,
+                data_date,
+            } => {
                 commands::topics::create(
                     &title,
                     description.as_deref(),
@@ -1257,7 +1264,14 @@ async fn run(cli: Cli) -> Result<(), CliError> {
                 )
                 .await
             }
-            TopicsCmd::Update { id, title, description, category, primary_contributor, data_date } => {
+            TopicsCmd::Update {
+                id,
+                title,
+                description,
+                category,
+                primary_contributor,
+                data_date,
+            } => {
                 commands::topics::update(
                     &id,
                     title.as_deref(),
@@ -1269,32 +1283,32 @@ async fn run(cli: Cli) -> Result<(), CliError> {
                 .await
             }
             TopicsCmd::Archive { id } => commands::topics::archive(&id).await,
-            TopicsCmd::Merge { source_id, target_id } => {
-                commands::topics::merge(&source_id, &target_id).await
-            }
+            TopicsCmd::Merge {
+                source_id,
+                target_id,
+            } => commands::topics::merge(&source_id, &target_id).await,
             TopicsCmd::Split {
                 source_id,
                 splits_file,
                 keep_source,
                 dry_run,
-            } => {
-                commands::topics::split(
-                    &source_id,
-                    &splits_file,
-                    !keep_source,
-                    dry_run,
-                )
-                .await
-            }
+            } => commands::topics::split(&source_id, &splits_file, !keep_source, dry_run).await,
         },
         Commands::Subtopics { command } => match command {
-            SubtopicsCmd::List { type_filter, topic, limit, offset } => {
-                commands::subtopics::list(type_filter.as_deref(), topic.as_deref(), limit, offset).await
+            SubtopicsCmd::List {
+                type_filter,
+                topic,
+                limit,
+                offset,
+            } => {
+                commands::subtopics::list(type_filter.as_deref(), topic.as_deref(), limit, offset)
+                    .await
             }
             SubtopicsCmd::Inspect { id } => commands::subtopics::inspect(&id).await,
-            SubtopicsCmd::Move { id, target_topic_id } => {
-                commands::subtopics::move_to(&id, &target_topic_id).await
-            }
+            SubtopicsCmd::Move {
+                id,
+                target_topic_id,
+            } => commands::subtopics::move_to(&id, &target_topic_id).await,
             SubtopicsCmd::Archive { id } => commands::subtopics::archive(&id).await,
             SubtopicsCmd::Update {
                 id,
@@ -1314,61 +1328,153 @@ async fn run(cli: Cli) -> Result<(), CliError> {
             }
         },
         Commands::Tasks { command } => match command {
-            TasksCmd::List { team, project, status, assignee, priority, search, topic, intent, topic_category, limit, offset } => {
+            TasksCmd::List {
+                team,
+                project,
+                status,
+                assignee,
+                priority,
+                search,
+                topic,
+                intent,
+                topic_category,
+                limit,
+                offset,
+            } => {
                 commands::tasks::list(
-                    team.as_deref(), project.as_deref(), status.as_deref(),
-                    assignee.as_deref(), priority.as_deref(), search.as_deref(),
-                    topic.as_deref(), intent.as_deref(), topic_category.as_deref(),
-                    limit, offset,
-                ).await
+                    team.as_deref(),
+                    project.as_deref(),
+                    status.as_deref(),
+                    assignee.as_deref(),
+                    priority.as_deref(),
+                    search.as_deref(),
+                    topic.as_deref(),
+                    intent.as_deref(),
+                    topic_category.as_deref(),
+                    limit,
+                    offset,
+                )
+                .await
             }
-            TasksCmd::Create { title, description, priority, assignee, due_date, status, team, project, parent, task_type, data_date } => {
+            TasksCmd::Create {
+                title,
+                description,
+                priority,
+                assignee,
+                due_date,
+                status,
+                team,
+                project,
+                parent,
+                task_type,
+                data_date,
+            } => {
                 commands::tasks::create(
-                    &title, description.as_deref(), priority.as_deref(),
-                    assignee.as_deref(), due_date.as_deref(), status.as_deref(),
-                    team.as_deref(), project.as_deref(), parent.as_deref(),
-                    task_type.as_deref(), data_date.as_deref(),
-                ).await
+                    &title,
+                    description.as_deref(),
+                    priority.as_deref(),
+                    assignee.as_deref(),
+                    due_date.as_deref(),
+                    status.as_deref(),
+                    team.as_deref(),
+                    project.as_deref(),
+                    parent.as_deref(),
+                    task_type.as_deref(),
+                    data_date.as_deref(),
+                )
+                .await
             }
             TasksCmd::History { id } => commands::tasks::history(&id).await,
             TasksCmd::Version { command } => match command {
-                TaskVersionCmd::SetDate { version_id, data_date } => {
-                    commands::tasks::version_set_date(&version_id, &data_date).await
-                }
+                TaskVersionCmd::SetDate {
+                    version_id,
+                    data_date,
+                } => commands::tasks::version_set_date(&version_id, &data_date).await,
                 TaskVersionCmd::Delete { version_id } => {
                     commands::tasks::version_delete(&version_id).await
                 }
                 TaskVersionCmd::SetContent {
-                    version_id, title, description, priority, assignee,
-                    due_date, blocked_by_reason, task_type,
+                    version_id,
+                    title,
+                    description,
+                    priority,
+                    assignee,
+                    due_date,
+                    blocked_by_reason,
+                    task_type,
                 } => {
                     commands::tasks::version_set_content(
-                        &version_id, title.as_deref(), description.as_deref(),
-                        priority.as_deref(), assignee.as_deref(), due_date.as_deref(),
-                        blocked_by_reason.as_deref(), task_type.as_deref(),
-                    ).await
+                        &version_id,
+                        title.as_deref(),
+                        description.as_deref(),
+                        priority.as_deref(),
+                        assignee.as_deref(),
+                        due_date.as_deref(),
+                        blocked_by_reason.as_deref(),
+                        task_type.as_deref(),
+                    )
+                    .await
                 }
             },
-            TasksCmd::Update { id, title, description, priority, assignee, due_date, status, team, project, user_notes, blocked_by_reason, task_type, parent, clear_parent, data_date } => {
+            TasksCmd::Update {
+                id,
+                title,
+                description,
+                priority,
+                assignee,
+                due_date,
+                status,
+                team,
+                project,
+                user_notes,
+                blocked_by_reason,
+                task_type,
+                parent,
+                clear_parent,
+                data_date,
+            } => {
                 commands::tasks::update(
-                    &id, title.as_deref(), description.as_deref(), priority.as_deref(),
-                    assignee.as_deref(), due_date.as_deref(), status.as_deref(),
-                    team.as_deref(), project.as_deref(), user_notes.as_deref(),
-                    blocked_by_reason.as_deref(), task_type.as_deref(),
-                    parent.as_deref(), clear_parent, data_date.as_deref(),
-                ).await
+                    &id,
+                    title.as_deref(),
+                    description.as_deref(),
+                    priority.as_deref(),
+                    assignee.as_deref(),
+                    due_date.as_deref(),
+                    status.as_deref(),
+                    team.as_deref(),
+                    project.as_deref(),
+                    user_notes.as_deref(),
+                    blocked_by_reason.as_deref(),
+                    task_type.as_deref(),
+                    parent.as_deref(),
+                    clear_parent,
+                    data_date.as_deref(),
+                )
+                .await
             }
             TasksCmd::Archive { id } => commands::tasks::archive(&id).await,
-            TasksCmd::Merge { source_id, target_id } => {
-                commands::tasks::merge(&source_id, &target_id).await
-            }
+            TasksCmd::Merge {
+                source_id,
+                target_id,
+            } => commands::tasks::merge(&source_id, &target_id).await,
         },
         Commands::Decisions { command } => match command {
-            DecisionsCmd::List { search, limit, offset } => {
-                commands::decisions::list(search.as_deref(), limit, offset).await
-            }
+            DecisionsCmd::List {
+                search,
+                limit,
+                offset,
+            } => commands::decisions::list(search.as_deref(), limit, offset).await,
             DecisionsCmd::Inspect { id } => commands::decisions::inspect(&id).await,
-            DecisionsCmd::Create { title, description, rationale, status, decision_maker, decision_type, priority, data_date } => {
+            DecisionsCmd::Create {
+                title,
+                description,
+                rationale,
+                status,
+                decision_maker,
+                decision_type,
+                priority,
+                data_date,
+            } => {
                 commands::decisions::create(
                     &title,
                     description.as_deref(),
@@ -1383,22 +1489,34 @@ async fn run(cli: Cli) -> Result<(), CliError> {
             }
             DecisionsCmd::History { id } => commands::decisions::history(&id).await,
             DecisionsCmd::Version { command } => match command {
-                DecisionVersionCmd::SetDate { version_id, data_date } => {
-                    commands::decisions::version_set_date(&version_id, &data_date).await
-                }
+                DecisionVersionCmd::SetDate {
+                    version_id,
+                    data_date,
+                } => commands::decisions::version_set_date(&version_id, &data_date).await,
                 DecisionVersionCmd::Delete { version_id } => {
                     commands::decisions::version_delete(&version_id).await
                 }
                 DecisionVersionCmd::SetContent {
-                    version_id, title, description, rationale, status,
-                    decision_maker, decision_type, priority,
+                    version_id,
+                    title,
+                    description,
+                    rationale,
+                    status,
+                    decision_maker,
+                    decision_type,
+                    priority,
                 } => {
                     commands::decisions::version_set_content(
-                        &version_id, title.as_deref(), description.as_deref(),
-                        rationale.as_deref(), status.as_deref(),
-                        decision_maker.as_deref(), decision_type.as_deref(),
+                        &version_id,
+                        title.as_deref(),
+                        description.as_deref(),
+                        rationale.as_deref(),
+                        status.as_deref(),
+                        decision_maker.as_deref(),
+                        decision_type.as_deref(),
                         priority.as_deref(),
-                    ).await
+                    )
+                    .await
                 }
             },
             DecisionsCmd::Update {
@@ -1426,10 +1544,17 @@ async fn run(cli: Cli) -> Result<(), CliError> {
                 .await
             }
             DecisionsCmd::Archive { id } => commands::decisions::archive(&id).await,
-            DecisionsCmd::Merge { source_id, target_id } => {
-                commands::decisions::merge(&source_id, &target_id).await
-            }
-            DecisionsCmd::Link { id, sub_topic, task, intent, rel_type } => {
+            DecisionsCmd::Merge {
+                source_id,
+                target_id,
+            } => commands::decisions::merge(&source_id, &target_id).await,
+            DecisionsCmd::Link {
+                id,
+                sub_topic,
+                task,
+                intent,
+                rel_type,
+            } => {
                 commands::decisions::link(
                     &id,
                     sub_topic.as_deref(),
@@ -1439,7 +1564,13 @@ async fn run(cli: Cli) -> Result<(), CliError> {
                 )
                 .await
             }
-            DecisionsCmd::Unlink { id, sub_topic, task, intent, rel_type } => {
+            DecisionsCmd::Unlink {
+                id,
+                sub_topic,
+                task,
+                intent,
+                rel_type,
+            } => {
                 commands::decisions::unlink(
                     &id,
                     sub_topic.as_deref(),
@@ -1468,22 +1599,18 @@ async fn run(cli: Cli) -> Result<(), CliError> {
                 splits_file,
                 keep_source,
                 dry_run,
-            } => {
-                commands::decisions::split(
-                    &source_id,
-                    &splits_file,
-                    !keep_source,
-                    dry_run,
-                )
-                .await
-            }
+            } => commands::decisions::split(&source_id, &splits_file, !keep_source, dry_run).await,
         },
         Commands::Intents { command } => match command {
-            IntentsCmd::List { limit, offset } => {
-                commands::intents::list(limit, offset).await
-            }
+            IntentsCmd::List { limit, offset } => commands::intents::list(limit, offset).await,
             IntentsCmd::Inspect { id } => commands::intents::inspect(&id).await,
-            IntentsCmd::Create { title, statement, scope, signals, data_date } => {
+            IntentsCmd::Create {
+                title,
+                statement,
+                scope,
+                signals,
+                data_date,
+            } => {
                 commands::intents::create(
                     &title,
                     statement.as_deref(),
@@ -1495,22 +1622,38 @@ async fn run(cli: Cli) -> Result<(), CliError> {
             }
             IntentsCmd::History { id } => commands::intents::history(&id).await,
             IntentsCmd::Version { command } => match command {
-                IntentVersionCmd::SetDate { version_id, data_date } => {
-                    commands::intents::version_set_date(&version_id, &data_date).await
-                }
+                IntentVersionCmd::SetDate {
+                    version_id,
+                    data_date,
+                } => commands::intents::version_set_date(&version_id, &data_date).await,
                 IntentVersionCmd::Delete { version_id } => {
                     commands::intents::version_delete(&version_id).await
                 }
                 IntentVersionCmd::SetContent {
-                    version_id, title, statement, scope, signals,
+                    version_id,
+                    title,
+                    statement,
+                    scope,
+                    signals,
                 } => {
                     commands::intents::version_set_content(
-                        &version_id, title.as_deref(), statement.as_deref(),
-                        scope.as_deref(), &signals,
-                    ).await
+                        &version_id,
+                        title.as_deref(),
+                        statement.as_deref(),
+                        scope.as_deref(),
+                        &signals,
+                    )
+                    .await
                 }
             },
-            IntentsCmd::Update { id, title, statement, scope, signals, data_date } => {
+            IntentsCmd::Update {
+                id,
+                title,
+                statement,
+                scope,
+                signals,
+                data_date,
+            } => {
                 commands::intents::update(
                     &id,
                     title.as_deref(),
@@ -1522,32 +1665,31 @@ async fn run(cli: Cli) -> Result<(), CliError> {
                 .await
             }
             IntentsCmd::Archive { id } => commands::intents::archive(&id).await,
-            IntentsCmd::Merge { source_id, target_id } => {
-                commands::intents::merge(&source_id, &target_id).await
-            }
+            IntentsCmd::Merge {
+                source_id,
+                target_id,
+            } => commands::intents::merge(&source_id, &target_id).await,
             IntentsCmd::Split {
                 source_id,
                 splits_file,
                 keep_source,
                 dry_run,
-            } => {
-                commands::intents::split(
-                    &source_id,
-                    &splits_file,
-                    !keep_source,
-                    dry_run,
-                )
-                .await
-            }
-            IntentsCmd::AddSignal { id, signals, data_date } => {
-                commands::intents::add_signal(&id, &signals, data_date.as_deref()).await
-            }
-            IntentsCmd::RemoveSignal { id, signals, data_date } => {
-                commands::intents::remove_signal(&id, &signals, data_date.as_deref()).await
-            }
-            IntentsCmd::SetScope { id, scope, data_date } => {
-                commands::intents::set_scope(&id, &scope, data_date.as_deref()).await
-            }
+            } => commands::intents::split(&source_id, &splits_file, !keep_source, dry_run).await,
+            IntentsCmd::AddSignal {
+                id,
+                signals,
+                data_date,
+            } => commands::intents::add_signal(&id, &signals, data_date.as_deref()).await,
+            IntentsCmd::RemoveSignal {
+                id,
+                signals,
+                data_date,
+            } => commands::intents::remove_signal(&id, &signals, data_date.as_deref()).await,
+            IntentsCmd::SetScope {
+                id,
+                scope,
+                data_date,
+            } => commands::intents::set_scope(&id, &scope, data_date.as_deref()).await,
             IntentsCmd::Consolidate {
                 target_id,
                 sources,
@@ -1570,44 +1712,70 @@ async fn run(cli: Cli) -> Result<(), CliError> {
             }
         },
         Commands::Diagnose { command } => match command {
-            DiagnoseCmd::Decisions { by, top, min_edges, offset } => {
-                commands::diagnose::decisions(by.as_deref(), top, min_edges, offset).await
-            }
-            DiagnoseCmd::Topics { by, top, min_edges, offset } => {
-                commands::diagnose::topics(by.as_deref(), top, min_edges, offset).await
-            }
-            DiagnoseCmd::Subtopics { top, min_edges, offset } => {
-                commands::diagnose::subtopics(top, min_edges, offset).await
-            }
-            DiagnoseCmd::Intents { top, min_edges, offset } => {
-                commands::diagnose::intents(top, min_edges, offset).await
-            }
+            DiagnoseCmd::Decisions {
+                by,
+                top,
+                min_edges,
+                offset,
+            } => commands::diagnose::decisions(by.as_deref(), top, min_edges, offset).await,
+            DiagnoseCmd::Topics {
+                by,
+                top,
+                min_edges,
+                offset,
+            } => commands::diagnose::topics(by.as_deref(), top, min_edges, offset).await,
+            DiagnoseCmd::Subtopics {
+                top,
+                min_edges,
+                offset,
+            } => commands::diagnose::subtopics(top, min_edges, offset).await,
+            DiagnoseCmd::Intents {
+                top,
+                min_edges,
+                offset,
+            } => commands::diagnose::intents(top, min_edges, offset).await,
             DiagnoseCmd::VersionChains { labels, limit } => {
                 commands::diagnose::version_chains(labels.as_deref(), limit).await
             }
         },
         Commands::Repair { command } => match command {
-            RepairCmd::VersionChains { labels, ids, dry_run } => {
-                commands::repair::version_chains(labels.as_deref(), &ids, dry_run).await
-            }
+            RepairCmd::VersionChains {
+                labels,
+                ids,
+                dry_run,
+            } => commands::repair::version_chains(labels.as_deref(), &ids, dry_run).await,
         },
         Commands::Entity { command } => match command {
-            EntityCmd::Get { ids, include_deleted } => commands::entity::get(ids, include_deleted).await,
-            EntityCmd::ListDeleted { labels, search, limit, offset } => {
-                commands::entity::list_deleted(
-                    labels.as_deref(),
-                    search.as_deref(),
-                    limit,
-                    offset,
-                )
-                .await
+            EntityCmd::Get {
+                ids,
+                include_deleted,
+            } => commands::entity::get(ids, include_deleted).await,
+            EntityCmd::ListDeleted {
+                labels,
+                search,
+                limit,
+                offset,
+            } => {
+                commands::entity::list_deleted(labels.as_deref(), search.as_deref(), limit, offset)
+                    .await
             }
             EntityCmd::Restore { id, label } => commands::entity::restore(&id, &label).await,
         },
         Commands::Teams { command } => match command {
             TeamsCmd::List => commands::teams::list().await,
-            TeamsCmd::Create { name, key, description, created_date } => {
-                commands::teams::create(&name, key.as_deref(), description.as_deref(), created_date.as_deref()).await
+            TeamsCmd::Create {
+                name,
+                key,
+                description,
+                created_date,
+            } => {
+                commands::teams::create(
+                    &name,
+                    key.as_deref(),
+                    description.as_deref(),
+                    created_date.as_deref(),
+                )
+                .await
             }
             TeamsCmd::SetCreatedDate { id, created_date } => {
                 commands::teams::set_created_date(&id, &created_date).await
@@ -1615,8 +1783,21 @@ async fn run(cli: Cli) -> Result<(), CliError> {
         },
         Commands::Projects { command } => match command {
             ProjectsCmd::List { team } => commands::projects::list(team.as_deref()).await,
-            ProjectsCmd::Create { name, team, key, description, created_date } => {
-                commands::projects::create(&name, &team, key.as_deref(), description.as_deref(), created_date.as_deref()).await
+            ProjectsCmd::Create {
+                name,
+                team,
+                key,
+                description,
+                created_date,
+            } => {
+                commands::projects::create(
+                    &name,
+                    &team,
+                    key.as_deref(),
+                    description.as_deref(),
+                    created_date.as_deref(),
+                )
+                .await
             }
             ProjectsCmd::SetCreatedDate { id, created_date } => {
                 commands::projects::set_created_date(&id, &created_date).await
@@ -1624,8 +1805,21 @@ async fn run(cli: Cli) -> Result<(), CliError> {
         },
         Commands::Statuses { command } => match command {
             StatusesCmd::List { team } => commands::statuses::list(team.as_deref()).await,
-            StatusesCmd::Create { team, name, description, category, created_date } => {
-                commands::statuses::create(&team, &name, description.as_deref(), category.as_deref(), created_date.as_deref()).await
+            StatusesCmd::Create {
+                team,
+                name,
+                description,
+                category,
+                created_date,
+            } => {
+                commands::statuses::create(
+                    &team,
+                    &name,
+                    description.as_deref(),
+                    category.as_deref(),
+                    created_date.as_deref(),
+                )
+                .await
             }
             StatusesCmd::SetCreatedDate { id, created_date } => {
                 commands::statuses::set_created_date(&id, &created_date).await
@@ -1664,15 +1858,16 @@ async fn run(cli: Cli) -> Result<(), CliError> {
             CypherCmd::SetPassphrase => commands::cypher::set_passphrase().await,
             CypherCmd::Run { file, dry_run } => commands::cypher::run(&file, dry_run).await,
         },
-        Commands::Search { query } => {
-            commands::search::search(&query).await
-        }
-        Commands::Context { max_tokens } => {
-            commands::context::context(max_tokens).await
-        }
+        Commands::Search { query } => commands::search::search(&query).await,
+        Commands::Context { max_tokens } => commands::context::context(max_tokens).await,
         Commands::Changes { since, types } => {
             commands::changes::changes(since.as_deref(), types.as_deref()).await
         }
+        Commands::ReplaceText {
+            search,
+            replacement,
+            apply,
+        } => commands::replace::replace_text(&search, &replacement, apply).await,
     }
 }
 

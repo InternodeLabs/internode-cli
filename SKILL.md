@@ -62,6 +62,7 @@ The CLI is **read-heavy with structural-cleanup and repair writes**:
 - **Fix a single version in place**: `<decisions|intents|tasks> version set-date <vid> --data-date …` re-dates one version; `… version delete <vid>` soft-deletes one bad version (both re-linearize the chain by date); `… version set-content <vid> --…` overwrites the content of one historical version in place (audit-only unless it's the head; rewrites otherwise-append-only history, so use sparingly).
 - **Fix a root's creation date**: `<projects|teams|statuses> set-created-date <id> --created-date …`.
 - **Gated Cypher**: `cypher run` executes a user-reviewed `.cypher` file behind a per-owner passphrase the agent does not know.
+- **Bulk text correction**: `replace-text "<search>" "<replacement>"` corrects a misspelling / bad transcription across **every text property of every node you own**, in place. Dry-run by default (`--apply` writes); search must be ≥4 characters; identity/structural keys are protected.
 
 > **Hard delete is never available.** Every "archive" / "merge source" sets `deleted=true` so history stays traversable, and archives are reversible via `entity restore`.
 
@@ -526,6 +527,26 @@ internode cypher run <file.cypher> --dry-run   # validate guardrails (EXPLAIN) w
 
 After a real run that mutates content, the response suggests `internode embeddings sync` to re-align the search index. Queries are owner-scoped and guardrailed (a denylist plus owner-id binding).
 
+### Bulk text correction — fix a misspelling everywhere (`replace-text`)
+
+Correct a misspelling or bad transcription across **every text property of every entity you own** in one call — titles, descriptions, conclusions, rationale, statements, scope, signals, names, notes, etc., across all roots *and* every version in history. This is the tool for "the transcript spelled it 'Qualeon' everywhere; it should be 'Qualcomm'".
+
+```bash
+internode replace-text "<search>" "<replacement>"            # dry-run preview (writes nothing)
+internode replace-text "<search>" "<replacement>" --apply    # perform the in-place rewrite
+internode replace-text "Qualeon" "Qualcomm" --apply
+internode replace-text "teh customer" "the customer" --apply
+```
+
+Rules and safety:
+
+- **Minimum 4 characters.** `search` must be at least 4 characters long; a shorter fragment is rejected with `BAD_INPUT`. Replacing tiny fragments graph-wide is almost never an intended correction and risks mass, unwanted edits.
+- **Dry-run by default.** Without `--apply` the command previews the matched nodes/fields (`before`/`after`) and writes nothing — it reports `nodes_matched` / `properties_matched` plus a capped `sample`. Add `--apply` to commit (`nodes_changed` / `properties_changed`). Always preview first.
+- **Case-sensitive, literal substring.** No regex, no case folding — `Qualeon` does not match `qualeon`.
+- **Protected fields.** Identity and structural data are never touched: ids, owner ids, the denormalized team/task keys that back uniqueness constraints (`key`, `key_owner`, `short_key`, `short_id`, …), counters, content/embedding hashes, and timestamps. Only human-readable text (and string-list fields like intent `signals`) is rewritten.
+- **In-place across all versions.** Because this rewrites the otherwise append-only history everywhere at once, use it for genuine data corrections only.
+- **Re-align search afterward.** After an `--apply` run, run `internode embeddings sync` so semantic search reflects the corrected content (the response returns this as a `suggested_followup`).
+
 #### Authoring guardrail-safe Cypher
 
 The runner enforces **owner isolation**: **every OI node pattern must bind** `owner_id: $oid`. The runner injects the caller's owner id into `$oid` automatically — never hard-code an owner id literal (that fails `BAD_INPUT`). On a violation you get:
@@ -672,6 +693,10 @@ For tasks, decisions, and sub-topics, `entity get` returns a **knowledge molecul
 ### Mutations are validated for you
 
 The service enforces allowed fields, entity types, and invariants (e.g. the decision invariant, single-parent tasks, split-target shape). Invalid input returns a `422` with a descriptive message — read it; it tells you exactly what to fix.
+
+### Bulk corrections need a ≥4-char search and a dry-run first
+
+`replace-text` rewrites a substring across every text property you own. The search string must be at least 4 characters, matching is case-sensitive, and it is a dry-run unless you pass `--apply`. Preview first, apply second, then `embeddings sync`. Structural ids / keys / hashes / timestamps are protected automatically, so a correction can never corrupt the graph.
 
 ### IDs are UUIDs
 

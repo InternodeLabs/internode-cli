@@ -9,6 +9,7 @@ pub mod entity;
 pub mod intents;
 pub mod projects;
 pub mod repair;
+pub mod replace;
 pub mod search;
 pub mod statuses;
 pub mod subtopics;

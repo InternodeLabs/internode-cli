@@ -283,6 +283,20 @@ internode changes --since 2025-03-14T10:00:00Z
 internode changes --since 2025-03-14 --types OITopic,OIIntent
 ```
 
+### Bulk text correction (string replace)
+
+Fix a misspelling / bad transcription across **every text property of every node you own**, in place — the correction tool for "the transcript spelled it wrong everywhere".
+
+```bash
+internode replace-text "Qualeon" "Qualcomm"            # dry-run preview (writes nothing)
+internode replace-text "Qualeon" "Qualcomm" --apply    # perform the in-place rewrite
+```
+
+- `search` must be at least **4 characters** (shorter is rejected as `BAD_INPUT`).
+- **Dry-run by default**; pass `--apply` to write. Matching is case-sensitive, literal substring.
+- Identity / structural keys (ids, team keys, short ids, hashes, timestamps) are protected and never modified.
+- After an `--apply` run, run `internode embeddings sync` to re-align semantic search.
+
 ## Configuration
 
 Config file: `~/.config/internode/config.toml`
