@@ -1,7 +1,7 @@
 ---
-name: use-internode-cli
+
+## name: use-internode-cli
 description: Interface with Internode Organizational Intelligence (OI) via the internode CLI. Use when the user asks to read, browse, search, update, reorganize, clean up, or repair knowledge entities (topics, sub-topics, tasks, decisions, intents, teams, projects, statuses), recover soft-deleted entities, re-align embeddings, or run gated Cypher — or when bootstrapping context for a work session.
----
 
 # Using the Internode CLI
 
@@ -29,11 +29,13 @@ Config lives at `~/.config/internode/config.toml`.
 **Every command** prints a single JSON line to stdout.
 
 Success:
+
 ```json
 {"ok":true,"data":{...}}
 ```
 
 Error (exit code > 0):
+
 ```json
 {"ok":false,"error":{"code":"AUTH_ERROR","message":"..."}}
 ```
@@ -49,7 +51,7 @@ The CLI is **read-heavy with structural-cleanup and repair writes**:
 - **Read all**: topics, sub-topics, tasks, decisions, intents, teams, projects, statuses.
 - **Diagnose** structural noise (uncapped edge counts) for decisions, topics, sub-topics, intents, plus forked version chains.
 - **Update scalar fields** on tasks, topics, decisions, intents (and revise sub-topic versions append-only).
-- **Reorganize edges**: move sub-topics between topics; link/unlink decision edges (sub-topic, task, intent); re-parent tasks (`HAS_SUBTASK`); normalize contradictory decision rel-types.
+- **Reorganize edges**: move sub-topics between topics; link/unlink decision edges (sub-topic, task, intent); re-parent tasks; normalize contradictory decision rel-types.
 - **Merge** duplicate roots (topics, decisions, intents, tasks) and **split** an over-merged root (topics, decisions, intents) back apart.
 - **Soft-archive** topics, sub-topics, decisions, intents, tasks (sets `deleted=true`; never hard-delete).
 - **Recover** soft-deleted entities (`entity list-deleted` → `entity restore`).
@@ -63,54 +65,182 @@ The CLI is **read-heavy with structural-cleanup and repair writes**:
 
 > **Hard delete is never available.** Every "archive" / "merge source" sets `deleted=true` so history stays traversable, and archives are reversible via `entity restore`.
 
+
+
 ## Recommended Workflow
 
 1. **Bootstrap context** at the start of a session:
-   ```bash
+  ```bash
    internode context --max-tokens 4000
-   ```
+  ```
    Returns a pre-formatted OI summary optimized for LLM consumption.
-
 2. **Search** when you need specific knowledge:
-   ```bash
+  ```bash
    internode search "deployment pipeline"
-   ```
-
+  ```
 3. **Browse** entity lists to find what you need:
-   ```bash
+  ```bash
    internode topics list --category 3
    internode tasks list --team <id> --status "In Progress"
    internode subtopics list --type Idea
-   ```
-
+  ```
 4. **Get details** on one or more entities by ID (knowledge molecule for tasks/decisions/sub-topics, full properties for everything else; max 20 IDs per call):
-   ```bash
+  ```bash
    internode entity get <id1> [<id2> ...]
-   ```
-
+  ```
 5. **Update / reorganize** as you work — change task properties, re-parent, move sub-topics, fix edges.
-
 6. **Clean up & repair** — see "Cleaning up & repairing the graph" for the diagnose → inspect → mutate → diagnose loop.
-
 7. **Re-align embeddings** after content-affecting changes so semantic search stays accurate:
-   ```bash
+  ```bash
    internode embeddings sync
-   ```
+  ```
 
-## Entity Types
 
-| Entity | What it represents | Key property |
-|---|---|---|
-| **Topic** | A knowledge area, discussion, or theme | `topic_title` |
-| **Sub-topic** | A typed conclusion under a topic (Idea, Problem, Solution, etc.) | `topic_conclusion` |
-| **Task** | An actionable work item | `task_title` |
-| **Decision** | A resolved choice with rationale | `decision_title` |
-| **Intent** | A strategic intent or goal | `intent_title` |
-| **Team** | An organizational group | `name` |
-| **Project** | A body of work under a team | `name` |
-| **Status** | A workflow state for tasks | `name` |
+
+## Data Model — how the knowledge connects
+
+OI is a **versioned, decision-centric knowledge graph**. Read this section before
+browsing: it explains what the entities are, how they link, what versioning means
+for reads, and what a "knowledge molecule" actually is. The CLI commands below all
+operate on this model.
+
+### Entity types and their fields
+
+**Knowledge entities** — extracted from meetings, notes, messages, and documents:
+
+
+| Entity                           | Represents                                                                                                                                    | Head-version fields                                                                                                                                                                                |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **OITopic**                      | A knowledge area / theme. Grouped into one of 11 business categories.                                                                         | `topic_title`, `topic_description`                                                                                                                                                                 |
+| **Sub-topic** (`OITopicVersion`) | A single **typed conclusion** under a topic. Each sub-topic is one version in the topic's history.                                            | `topic_conclusion`, `topic_conclusion_type` (Outcome, Problem, Constraint, Solution, Opportunity, Idea, Information)                                                                               |
+| **OITask**                       | An actionable work item. Users also call these *tickets*, *issues*, *action items*, or *to-dos* — all the same entity. Can nest via subtasks. | `task_title`, `description`, `priority`, `assignee_email`, `due_date`, `user_notes`, `blocked_by_reason`, `task_type` (`action_item` | `deal_opportunity`); status is held on an edge, not a field |
+| **OIDecision**                   | A resolved choice with rationale. **The hub that connects everything else.**                                                                  | `decision_title`, `description`, `rationale`, `decision_status` (typically proposed, deferred, accepted, rejected, superseded), `decision_type`, `priority`, `decision_maker_email`                |
+| **OIIntent**                     | A strategic intent or goal.                                                                                                                   | `intent_title`, `statement`, `scope`, `signals` (list of phrases)                                                                                                                                  |
+
+
+**Structural entities** — the org scaffold that tasks hang off:
+
+
+| Entity              | Represents                                                                   | Fields                                                                      |
+| ------------------- | ---------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| **OITeam**          | An organizational group. Owns projects, statuses, and tasks.                 | `name`, `key`, `description`, `member_emails`                               |
+| **OIProject**       | A body of work under **exactly one** team.                                   | `name`, `key`, `description`                                                |
+| **OIStatus**        | A per-team workflow state for tasks.                                         | `name`, `description`, `category` (not_started, in_progress, done, blocked) |
+| **OITopicCategory** | Static grouping of topics (the 11 categories listed at the end of this doc). | `name`                                                                      |
+
+
+
+
+### The relationship graph is decision-centric
+
+The `OIDecision` **is the hub**. Topics, tasks, and intents almost never link to
+each other directly — they connect *through* decisions. To understand why a task
+exists, or what a topic led to, you walk through the decisions that touch it.
+
+```
+                      ┌──────────────────────────┐
+    sub-topic  ◄──────┤         OIDecision        ├──────►  OITaskVersion
+ (OITopicVersion)     │   (the connecting hub)    │
+   RATIFIES /         └─────────────┬─────────────┘   SPAWNS / BLOCKS /
+   REJECTS / DEFERS                 │ SUPPORTS          CANCELS / MODIFIES
+                                    ▼
+                                 OIIntent
+```
+
+Hub edges:
+
+- `OIDecision -[RATIFIES | REJECTS | DEFERS]-> sub-topic` — the decision acts on a conclusion (an `OITopic` version).
+- `OIDecision -[SPAWNS | BLOCKS | CANCELS | MODIFIES]-> OITaskVersion` — decisions create and change tasks. The edge targets a specific task **version**: `SPAWNS` the first version; the others later versions (this is why `link --task` auto-adjusts the rel-type — see Decision mutations).
+- `OIDecision -[SUPPORTS]-> OIIntent` — the choice advances a goal.
+- `OITask -[HAS_SUBTASK]-> OITask` — task hierarchy (one parent max; sibling subtasks keep an explicit order).
+
+Structural edges:
+
+- `OITopicCategory -[CONTAINS]-> OITopic`
+- `OITopic -[HAS_VERSION]-> sub-topic` — a topic's sub-topics *are* its typed conclusions.
+- `OITeam -[HAS_PROJECT]-> OIProject`, `OITeam -[HAS_TASK]-> OITask`, `OIProject -[HAS_TASK]-> OITask`
+- `OITeam | OIProject -[HAS_STATUS]-> OIStatus`, and `task version -[HAS_STATUS]-> OIStatus`
+
+> **Decision invariant:** every live `OIDecision` keeps **≥1 sub-topic edge AND ≥1 intent edge** (enforced on `unlink`, see Decision mutations). That is what guarantees the hub stays anchored to both a conclusion and a goal — and why the graph stays navigable.
+
+
+
+### Versioning model — roots vs. versions
+
+Topics, sub-topics, tasks, decisions, and intents are **versioned**:
+
+- A **root** node (e.g. `OITask`) is the stable identity and the ID you reference everywhere.
+- Content lives on **append-only version** nodes chained in date order. Editing never overwrites in place — `update` appends a *new* version, so the chain is a full audit history.
+- Every normal read resolves the single **head** (latest) version. Use `<entity> history <root_id>` to see the whole chain, and the `version` sub-commands to correct one historical version.
+- `OITask` / `OIDecision` / `OIIntent` each keep **one linear chain** (head = newest). A chain can occasionally fork into multiple heads — find and fix these with `diagnose version-chains` → `repair version-chains`.
+- `OITopic` **is the exception:** its "versions" are the **sub-topics**, which fan out into many independent conclusion lineages. A topic legitimately has many heads (one per sub-topic), so it is **not** repairable by `repair version-chains`.
+- **Structural roots are not versioned** — `OITeam` / `OIProject` / `OIStatus` / `OITopicCategory` carry their fields directly and have a single `created_at` (fixable via `set-created-date`).
+
+
+
+### Knowledge molecules
+
+A **knowledge molecule** is *one entity plus its decision-centric neighborhood* —
+the surrounding entities you reach by walking through the hub. This is the unit
+`entity get` returns for **tasks, decisions, and sub-topics** (full properties for
+everything else). It bundles the connected entities so you can understand an item
+in one call instead of traversing edges by hand.
+
+
+| `entity get <id>` on…                | Returns                                                                                                                                                                     |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Task**                             | the task (current state) + the decisions acting on it (with their rel-type, each carrying its own sub-topics and intents) + parent and subtask references |
+| **Decision**                         | the decision + the sub-topics, intents, and tasks it connects                                                                                                        |
+| **Sub-topic**                        | its **parent topic's molecule**: the topic + category + the topic's sub-topics + the connected decisions and tasks                             |
+| **Topic** (root id)                  | the topic's own properties + category (to read its conclusions, pass a sub-topic id, or use `topics inspect` / `subtopics list --topic`)             |
+| **Intent / Team / Project / Status** | the full property set                                                                                                                                                       |
+
+
+The molecule is what makes the graph *navigable in one call*: from any task you
+immediately see the decisions that drove it and, through them, the topics and goals
+involved — without manually traversing edges. A molecule returns a topic's
+sub-topics in full, while other connected lists are a representative sample for very
+large neighborhoods; reach for `inspect`/`diagnose` when you need every edge or
+suspect an entity is over-linked.
+
+## Retrieval strategies
+
+Two non-obvious habits make retrieval much more reliable.
+
+### 1. Match the lookup to the field — concepts vs. state
+
+Semantic `search` ranks by **meaning** in titles, descriptions, conclusions,
+decisions, and intents. It does **not** consider a task's current *state* — status,
+assignee, team, and project are not part of what it compares — so queries like
+"blocked tasks" or "the platform team's open work" won't reliably surface through
+`search`. Use the surface that matches the question:
+
+- **Concept / "what do we know about X"** → `search "<natural language>"`.
+- **State & structure / "which tasks are blocked, assigned to, or under team Y"** →
+  `tasks list` filters (`--status`, `--assignee`, `--team`, `--project`,
+  `--priority`). The `--topic`, `--intent`, and `--topic-category` filters go
+  further: they walk the decision graph and return every task connected to that
+  topic, intent, or category — retrieval you can't reach by phrasing alone.
+
+### 2. Treat search hits as entry points, then expand through the decision hub
+
+`search` is precise, not exhaustive: it returns only the **strongest matches per
+entity type**, grouped by type, and drops weak ones. Two consequences:
+
+- **One broad query under-recalls.** Run a few sharply-phrased queries (the exact
+  term, a synonym, the opposite framing) rather than relying on a single one. If a
+  type comes back empty, nothing cleared the relevance bar — rephrase instead of
+  concluding the knowledge isn't there.
+- **A hit is a doorway, not the whole room.** Expand it: `entity get` a **task** or
+  **decision** hit to pull its decision-centric molecule; for a **topic or
+  conclusion** hit, open the conclusions and the decisions on them with
+  `topics inspect` (a plain `entity get` on a topic returns only its headline).
+  Because the graph is decision-centric, the *why* behind any hit sits one hop away
+  through its decisions — pivot there to turn a flat match into connected knowledge.
 
 ## Command Reference
+
+
 
 ### Context & Discovery
 
@@ -128,9 +258,11 @@ internode entity get <id1> [<id2> ... <idN>] [--include-deleted]
 # payload for soft-deleted entities (use with the recovery workflow).
 ```
 
-### List Endpoints
 
-All list commands return lightweight results: `{ items: [{ id, label }], total, limit, offset }` where `label` is the key property capped to 200 characters.
+
+### List commands
+
+All list commands return lightweight results: `{ items: [{ id, label }], total, limit, offset }` where `label` is a short display string for the entity.
 
 ```bash
 internode topics list [--category N] [--search "text"] [--limit N] [--offset N]
@@ -148,6 +280,8 @@ internode projects list [--team ID]
 internode statuses list [--team ID]
 ```
 
+
+
 ### Inspecting a single entity (uncapped relationship dump)
 
 `<entity> inspect <id>` returns the **full**, uncapped neighborhood for one root. Use this to plan a move/merge/split/unlink.
@@ -159,9 +293,11 @@ internode decisions inspect <decision_id>       # every sub-topic, intent, and t
 internode intents inspect   <intent_id>         # every supporting decision
 ```
 
+
+
 ### Diagnostics (uncapped — find the noise)
 
-`internode diagnose` returns the **real** edge counts so you can see structural noise. Unlike `entity get` (which caps related-entity lists at 4), the diagnostic endpoints are uncapped.
+`internode diagnose` returns the **real** edge counts so you can see structural noise. Where `entity get` shows a representative slice of an entity's relationships, the diagnostic commands report the complete counts.
 
 ```bash
 internode diagnose decisions [--by sub_topics|tasks|intents] [--top N] [--min-edges N] [--offset N]
@@ -181,6 +317,8 @@ internode diagnose version-chains [--labels OIDecision,OIIntent,OITask] [--limit
 # (breaks head resolution downstream). Repair with `repair version-chains`.
 ```
 
+
+
 ### Task mutations
 
 ```bash
@@ -191,8 +329,10 @@ internode tasks merge   <source_id> --into <target_id>         # re-point decisi
 ```
 
 - **Team/project changes:** When changing a task's team, incompatible project, status, and assignee are auto-cleared. The response includes a `cleared_fields` list when this happens. Projects depend on teams — the target project must belong to the target team.
-- **Re-parenting (`HAS_SUBTASK`):** `--parent <task_id>` makes this task a subtask of another; `--clear-parent` detaches it (becomes a root task). A task has at most one parent — re-parenting auto-detaches the old parent. Cycles and self-parenting are rejected (422).
-- **`tasks merge`:** incoming decision edges (SPAWNS/BLOCKS/CANCELS/MODIFIES) re-point onto the target's live head version; `HAS_TASK` ownership and `HAS_SUBTASK` parent/child edges re-parent onto the target; then the source is archived.
+- **Re-parenting:** `--parent <task_id>` makes this task a subtask of another; `--clear-parent` detaches it (becomes a root task). A task has at most one parent — re-parenting auto-detaches the old parent. Cycles and self-parenting are rejected (422).
+- `tasks merge`**:** incoming decision edges (SPAWNS/BLOCKS/CANCELS/MODIFIES) re-point onto the target's current version; team/project ownership and subtask parent/child links re-parent onto the target; then the source is archived.
+
+
 
 ### Project create
 
@@ -205,6 +345,8 @@ internode statuses create --team <team-id> --name "..." [--description "..."] [-
 internode statuses set-created-date <status_id> --created-date "YYYY-MM-DD"
 # A project always belongs to a team (--team is required).
 ```
+
+
 
 ### Topic mutations
 
@@ -226,8 +368,10 @@ internode subtopics archive <sub_topic_id>
 internode subtopics update  <sub_topic_id> [--conclusion "..."] [--type Idea|Problem|Solution|Information|Outcome|Opportunity|Constraint] [--primary-contributor "email"] [--data-date "YYYY-MM-DD"]
 ```
 
-- `move` atomically swaps `HAS_VERSION` so the version is owned by exactly one topic. The conclusion text (and embedding) is untouched.
+- `move` re-parents the sub-topic so it's owned by exactly one topic. The conclusion text (and its search index entry) is untouched.
 - `update` **revises** a sub-topic: it appends a NEW version chained from the prior tail (versions are append-only — never overwritten in place).
+
+
 
 ### Decision mutations
 
@@ -257,7 +401,9 @@ internode decisions normalize-edges [--decision <id>] [--sub-topic-prefer RATIFI
 
 > **Decision invariant (HTTP 422 on violation):** Every live OIDecision MUST keep ≥1 sub-topic edge AND ≥1 intent edge. If `unlink` would drop either to zero, it's blocked with a structured 422. Add a replacement edge first, or call `merge` / `archive` to retire the decision explicitly.
 
-> **`link --task` SPAWNS guard:** The backend reuses the V3 `_safe_link_decision_to_task_version` helper, so SPAWNS is auto-downgraded to MODIFIES when the target isn't the first task version, and BLOCKS/CANCELS/MODIFIES is auto-upgraded to SPAWNS when the target is a first version with no SPAWNS yet. The response carries a `note` field when this happens.
+> `link --task` **SPAWNS guard:** SPAWNS is auto-downgraded to MODIFIES when the target isn't the first task version, and BLOCKS/CANCELS/MODIFIES is auto-upgraded to SPAWNS when the target is a first version with no SPAWNS yet. The response carries a `note` field when this happens.
+
+
 
 ### Intent mutations
 
@@ -280,7 +426,9 @@ internode intents consolidate --into <target_id> --source <id> [--source <id> ..
 
 `intents consolidate` is the inverse of split — it folds multiple source intents into one target (re-points their SUPPORTS edges, merges statement/scope/signals per strategy), then archives the sources.
 
-> **Preserve history with `--data-date` / `--created-date`:** every command that writes a new version accepts an optional `--data-date <ISO-8601>` (`2025-03-14` or `2025-03-14T10:00:00Z`). This covers `create` and `update` (topics, sub-topics, tasks, decisions, intents), the intent version-writing ops `set-scope`, `add-signal`, `remove-signal`, `consolidate`, and the per-version `version set-date` fix. It stamps the version with that historical date instead of "now", so the timeline reflects when the knowledge actually happened — critical when correcting backfilled or split data. The version is inserted into the chain at the correct point by date. You may pass `--data-date` alone (no content change) to append a date-corrected version. An unparseable value returns 422. In `split` plans, add a `"data_date"` key inside any `new_topic` / `new_decision` / `new_intent` object to backdate the entity it creates (otherwise it defaults to today, which distorts history). Non-versioned roots (projects, teams, statuses) use `--created-date` at create time and `set-created-date` to fix an existing root.
+> **Preserve history with** `--data-date` **/** `--created-date`**:** every command that writes a new version accepts an optional `--data-date <ISO-8601>` (`2025-03-14` or `2025-03-14T10:00:00Z`). This covers `create` and `update` (topics, sub-topics, tasks, decisions, intents), the intent version-writing ops `set-scope`, `add-signal`, `remove-signal`, `consolidate`, and the per-version `version set-date` fix. It stamps the version with that historical date instead of "now", so the timeline reflects when the knowledge actually happened — critical when correcting backfilled or split data. The version is inserted into the chain at the correct point by date. You may pass `--data-date` alone (no content change) to append a date-corrected version. An unparseable value returns 422. In `split` plans, add a `"data_date"` key inside any `new_topic` / `new_decision` / `new_intent` object to backdate the entity it creates (otherwise it defaults to today, which distorts history). Non-versioned roots (projects, teams, statuses) use `--created-date` at create time and `set-created-date` to fix an existing root.
+
+
 
 ### Reviewing version history (decisions / intents / tasks)
 
@@ -321,7 +469,9 @@ internode tasks     version set-content <version_id> [--title ...] [--descriptio
 
 > **This rewrites history — use it sparingly.** The graph is otherwise append-only by design; for routine revisions prefer `update` (appends a new version) and for genuinely bad versions prefer `version delete`. `set-content` exists for in-place corrections (typos, PII scrubbing, fixing imported junk).
 >
-> **Only the head is embedded.** The response includes `is_head` and `reembedded`. Editing a non-head version is an **audit-only** correction — it does *not* change semantic search or snapshots (those follow the head). Only editing the head re-embeds. Editing a soft-deleted version is refused (422) — restore the root first. Only fields on the version node are editable; edge-backed task attributes (status/team/project/parent) are still changed via `tasks update`.
+> **Only the head feeds search.** The response includes `is_head` and `reembedded`. Editing a non-head version is an **audit-only** correction — it does *not* change semantic search (which follows the head). Only editing the head updates search. Editing a soft-deleted version is refused (422) — restore the root first. Only fields on the version node are editable; edge-backed task attributes (status/team/project/parent) are still changed via `tasks update`.
+
+
 
 ### Recovery — restore soft-deleted entities
 
@@ -331,12 +481,14 @@ Every archive/merge is reversible. Find and restore soft-deleted roots:
 internode entity list-deleted [--labels OITopic,OIDecision,OIIntent,OITask] [--search "text"] [--limit N] [--offset N]
 internode entity get <id> --include-deleted          # verify it's the right entity before restoring
 internode entity restore <id> --label OITopic|OIDecision|OIIntent|OITask
-# restore un-deletes the root and its versions and re-enqueues pgvector embeddings.
+# restore un-deletes the root and its versions and refreshes the search index.
 ```
+
+
 
 ### Repair — forked version chains
 
-Single-lineage entities (OIDecision/OIIntent/OITask) keep one linear version history per root. Pipeline bugs can fork a chain into multiple heads, which breaks head resolution (snapshots, search, embeddings). Diagnose with `diagnose version-chains`, then repair:
+Single-lineage entities (OIDecision/OIIntent/OITask) keep one linear version history per root. A fork can split a chain into multiple heads, which breaks head resolution (reads and search rely on a single head). Diagnose with `diagnose version-chains`, then repair:
 
 ```bash
 internode repair version-chains --dry-run                        # preview every forked root that would be repaired
@@ -345,38 +497,38 @@ internode repair version-chains --labels OIDecision,OIIntent     # restrict to s
 internode repair version-chains --ids oidecision_abc,oiintent_xyz # repair only these roots
 ```
 
-Repair drops the tangled `UPDATED_TO` edges among a root's live versions and rebuilds a single date-ordered chain with exactly one head, then re-enqueues embeddings (the head may have changed). OITopic is intentionally **not** repairable this way — a topic fans out into many independent sub-topic lineages, so "multiple heads" is normal there.
+Repair rebuilds a single date-ordered version chain with exactly one head, then refreshes the search index (the head may have changed). OITopic is intentionally **not** repairable this way — a topic fans out into many independent sub-topic lineages, so "multiple heads" is normal there.
 
-### Embeddings — re-align pgvector with Neo4j ("commit")
+### Embeddings — re-align the search index ("commit")
 
 ```bash
 internode embeddings status
-# Read-only drift report: Neo4j vs pgvector per entity type. Safe any time.
+# Read-only drift report: knowledge graph vs. search index, per entity type. Safe any time.
 
 internode embeddings sync [--scope all|OITopic|OIIntent|OITask|OIDecision|OIProject|ExternalSyncJob|OITopicVersion] [--ids id1,id2] [--since 2024-09-01T00:00:00Z] [--force] [--dry-run] [--no-wait] [--timeout N]
-# Realign embeddings after content-affecting changes. Default is synchronous
-# (bounded by --timeout, default 120s, max 900). --no-wait backgrounds the work.
-# --dry-run reports the plan without writing. --force re-embeds even when the
-# v3 hash is unchanged. --ids and --since are mutually exclusive.
+# Realign the search index after content-affecting changes. Default waits for
+# completion (use --timeout to bound the wait); --no-wait backgrounds the work.
+# --dry-run reports the plan without writing. --force re-indexes even when the
+# content looks unchanged. --ids and --since are mutually exclusive.
 ```
 
-Run `embeddings sync` after edits that change searchable content (titles, descriptions, conclusions, merges, splits, repairs). Most mutation endpoints already enqueue embeddings automatically — `sync` is the explicit catch-up / drift-fixer.
+Run `embeddings sync` after edits that change searchable content (titles, descriptions, conclusions, merges, splits, repairs). Most mutations refresh the search index automatically — `sync` is the explicit catch-up / drift-fixer.
 
 ### Gated Cypher runner
 
 A user-only escape hatch for graph surgery the structured commands can't express. The agent drafts a `.cypher` file; the **user** reviews it and runs it, typing a per-owner passphrase the agent does not know — so an agent cannot execute the file it wrote.
 
 ```bash
-internode cypher set-passphrase           # prompts twice; min length 12 chars (interactive TTY only)
+internode cypher set-passphrase           # prompts twice for a passphrase (interactive terminal only)
 internode cypher run <file.cypher>        # prompts for the passphrase, then executes blocks (separated by lines containing only ';')
 internode cypher run <file.cypher> --dry-run   # validate guardrails (EXPLAIN) without executing any block
 ```
 
-After a real run that mutates content, the API hint suggests `internode embeddings sync` to re-align pgvector. Queries are owner-scoped and guardrailed (denylist + owner-id binding).
+After a real run that mutates content, the response suggests `internode embeddings sync` to re-align the search index. Queries are owner-scoped and guardrailed (a denylist plus owner-id binding).
 
 #### Authoring guardrail-safe Cypher
 
-The runner enforces **owner isolation**: **every OI node pattern must bind `owner_id: $oid`**. The runner injects the caller's owner id into `$oid` automatically — never hard-code an owner id literal (that fails `BAD_INPUT`). On a violation you get:
+The runner enforces **owner isolation**: **every OI node pattern must bind** `owner_id: $oid`. The runner injects the caller's owner id into `$oid` automatically — never hard-code an owner id literal (that fails `BAD_INPUT`). On a violation you get:
 
 ```json
 {"ok":false,"error":{"code":"BAD_INPUT","message":"Every OI node pattern must bind owner_id: $oid for owner isolation. Offending pattern: (:OITopic)"}}
@@ -384,12 +536,14 @@ The runner enforces **owner isolation**: **every OI node pattern must bind `owne
 
 Rules to keep a script accepted:
 
-- **Bind `owner_id: $oid` on every labeled OI node**, in *every* clause — `MATCH`, `OPTIONAL MATCH`, and inside variable-length / path patterns. Example: `MATCH (tp:OITopic {owner_id: $oid})-[:HAS_VERSION]->(v {owner_id: $oid})`.
+- **Bind** `owner_id: $oid` **on every labeled OI node**, in *every* clause — `MATCH`, `OPTIONAL MATCH`, and inside variable-length / path patterns. Example: `MATCH (tp:OITopic {owner_id: $oid})-[:HAS_VERSION]->(v {owner_id: $oid})`.
 - **Bind it on intermediate and target nodes too**, not just the anchor — e.g. `-[r:NEXT]->(b {owner_id: $oid})`, not `-[r:NEXT]->()`. A bare `()` or an unbound relationship endpoint that resolves to an OI node will be rejected.
 - **The check scans the raw file text, including comments.** A literal node pattern like `(:OITopic)` written in a `//` comment trips the guardrail. Describe patterns in prose inside comments, or always include `{owner_id: $oid}` even in illustrative snippets.
-- **Use `$oid`, never a literal UUID.** Owner scoping is provided by the runner; passing your own id is both unnecessary and blocked.
-- **Split statements with a line containing only `;`.** Each block is validated and executed independently; `--dry-run` runs `EXPLAIN` on every block without writing.
-- **Always `--dry-run` first** to clear the guardrail (binding + denylist) before the real run.
+- **Use** `$oid`**, never a literal UUID.** Owner scoping is provided by the runner; passing your own id is both unnecessary and blocked.
+- **Split statements with a line containing only** `;`**.** Each block is validated and executed independently; `--dry-run` runs `EXPLAIN` on every block without writing.
+- **Always** `--dry-run` **first** to clear the guardrail (binding + denylist) before the real run.
+
+
 
 ## Cleaning up & repairing the graph
 
@@ -400,38 +554,46 @@ Recurring defects you may need to fix:
 3. **Duplicate roots** — two topics / decisions / intents / tasks about the same thing (false merges create one; false splits create two).
 4. **Forked version chains** — a decision/intent/task root with multiple version heads.
 
+
+
 ### Workflow loop
 
 ```text
 diagnose  →  inspect  →  mutate  →  diagnose  →  embeddings sync
 ```
 
-1. **`diagnose`** to find outliers / forks (uncapped counts).
-2. **`inspect`** the worst offenders to see every edge.
-3. **`mutate`** with the right primitive (`move` / `merge` / `split` / `link` / `unlink` / `normalize-edges` / `archive` / `repair`).
-4. **`diagnose`** again to confirm.
-5. **`embeddings sync`** to re-align semantic search.
+1. `diagnose` to find outliers / forks (uncapped counts).
+2. `inspect` the worst offenders to see every edge.
+3. `mutate` with the right primitive (`move` / `merge` / `split` / `link` / `unlink` / `normalize-edges` / `archive` / `repair`).
+4. `diagnose` again to confirm.
+5. `embeddings sync` to re-align semantic search.
+
+
 
 ### Decision tree: which primitive?
 
-| Symptom | Right primitive |
-|---|---|
-| Sub-topic attached to the wrong topic root | `subtopics move <sub_id> --to-topic <correct_topic_id>` |
-| Sub-topic conclusion text needs revising | `subtopics update <sub_id> --conclusion "..." --type ...` (appends a new version) |
-| Two `OITopic` roots about the same subject | `topics merge <duplicate_id> --into <canonical_id>` |
-| One topic actually covers several distinct subjects | `topics split <id> --file plan.json` |
-| Two `OIIntent` roots about the same goal | `intents merge <duplicate_id> --into <canonical_id>` |
-| Several intents that should be one | `intents consolidate --into <target> --source <id> --source <id>` |
-| One intent was falsely merged from several | `intents split <id> --file plan.json` |
-| Two `OIDecision` roots about the same choice | `decisions merge <duplicate_id> --into <canonical_id>` |
-| One decision conflates several distinct choices | `decisions split <id> --file plan.json` |
-| Two `OITask` roots that are the same task | `tasks merge <duplicate_id> --into <canonical_id>` |
-| A task belongs under a different parent task | `tasks update <id> --parent <parent_id>` (or `--clear-parent`) |
+
+| Symptom                                                     | Right primitive                                                                                                               |
+| ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Sub-topic attached to the wrong topic root                  | `subtopics move <sub_id> --to-topic <correct_topic_id>`                                                                       |
+| Sub-topic conclusion text needs revising                    | `subtopics update <sub_id> --conclusion "..." --type ...` (appends a new version)                                             |
+| Two `OITopic` roots about the same subject                  | `topics merge <duplicate_id> --into <canonical_id>`                                                                           |
+| One topic actually covers several distinct subjects         | `topics split <id> --file plan.json`                                                                                          |
+| Two `OIIntent` roots about the same goal                    | `intents merge <duplicate_id> --into <canonical_id>`                                                                          |
+| Several intents that should be one                          | `intents consolidate --into <target> --source <id> --source <id>`                                                             |
+| One intent was falsely merged from several                  | `intents split <id> --file plan.json`                                                                                         |
+| Two `OIDecision` roots about the same choice                | `decisions merge <duplicate_id> --into <canonical_id>`                                                                        |
+| One decision conflates several distinct choices             | `decisions split <id> --file plan.json`                                                                                       |
+| Two `OITask` roots that are the same task                   | `tasks merge <duplicate_id> --into <canonical_id>`                                                                            |
+| A task belongs under a different parent task                | `tasks update <id> --parent <parent_id>` (or `--clear-parent`)                                                                |
 | Decision linked to a sub-topic/task with the wrong rel-type | `decisions unlink ... --type WRONG` then `decisions link ... --type RIGHT`, or `decisions normalize-edges` for bulk conflicts |
-| Decision linked to something unrelated | `decisions unlink <did> --sub-topic <stid>` (422 if it's the last sub-topic) |
-| Decision/topic/intent/task is genuinely wrong | `<entity> archive <id>` (reversible via `entity restore`) |
-| Accidentally archived something | `entity list-deleted` → `entity restore <id> --label <RootLabel>` |
-| A decision/intent/task has multiple version heads | `repair version-chains` (preview with `--dry-run` or `diagnose version-chains`) |
+| Decision linked to something unrelated                      | `decisions unlink <did> --sub-topic <stid>` (422 if it's the last sub-topic)                                                  |
+| Decision/topic/intent/task is genuinely wrong               | `<entity> archive <id>` (reversible via `entity restore`)                                                                     |
+| Accidentally archived something                             | `entity list-deleted` → `entity restore <id> --label <RootLabel>`                                                             |
+| A decision/intent/task has multiple version heads           | `repair version-chains` (preview with `--dry-run` or `diagnose version-chains`)                                               |
+
+
+
 
 ### Worked examples
 
@@ -482,7 +644,11 @@ internode entity get oidecision_abc --include-deleted    # confirm
 internode entity restore oidecision_abc --label OIDecision
 ```
 
+
+
 ## Key Patterns
+
+
 
 ### Parse output reliably
 
@@ -493,17 +659,19 @@ if echo "$result" | jq -e '.ok' > /dev/null 2>&1; then
 fi
 ```
 
+
+
 ### Preview destructive structural changes
 
 `split`, `normalize-edges`, `consolidate`, `repair version-chains`, and `embeddings sync` all support `--dry-run`. Use it to inspect the plan before committing — especially for split/merge/repair, which move many edges at once.
 
 ### Entity detail returns knowledge molecules
 
-For tasks, decisions, and sub-topics, `entity get` returns a **knowledge molecule** — the entity plus its decision-centric neighborhood. For other types, the full property set. Up to 20 IDs per call; response keyed by entity ID. IDs that fail to resolve return an `error` field.
+For tasks, decisions, and sub-topics, `entity get` returns a **knowledge molecule** — the entity plus its decision-centric neighborhood (a topic's sub-topics come back in full, and getting a sub-topic id returns its parent topic's molecule; for very large neighborhoods the other connected lists are a representative sample — use `inspect` for the complete set). For other types, the full property set. See "Data Model → Knowledge molecules" for the per-type shape. Up to 20 IDs per call; response keyed by entity ID. IDs that fail to resolve return an `error` field.
 
-### Mutations are validated server-side
+### Mutations are validated for you
 
-The API enforces allowed fields, entity types, and invariants (e.g. the decision invariant, single-parent tasks, split-target shape). Invalid input returns a `422` with a descriptive message — read it; it tells you exactly what to fix.
+The service enforces allowed fields, entity types, and invariants (e.g. the decision invariant, single-parent tasks, split-target shape). Invalid input returns a `422` with a descriptive message — read it; it tells you exactly what to fix.
 
 ### IDs are UUIDs
 
