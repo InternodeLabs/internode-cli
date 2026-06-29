@@ -66,6 +66,7 @@ internode auth status
 | Action                                                                       | Allowed                       |
 | ---------------------------------------------------------------------------- | ----------------------------- |
 | Read / list all entities                                                     | Yes                           |
+| Export the full graph + derive its schema (read-only)                        | Yes                           |
 | Diagnose V2 reconciliation noise (uncapped edge counts)                      | Yes                           |
 | Update task scalar properties                                                | Yes                           |
 | Update topic / sub-topic / decision / intent scalar properties               | Yes                           |
@@ -271,6 +272,59 @@ internode search "authentication architecture"
 
 ```bash
 internode context --max-tokens 4000
+```
+
+### Graph export / schema (local NetworkX mirror)
+
+Export your **entire distilled OI graph** as nodes + edges so a local agent can
+mirror it into a `networkx.MultiDiGraph` and run arbitrary dumps, neighbourhood
+analyses, and graph walks locally — without ever touching (or overloading) the
+primary database.
+
+```bash
+internode graph export                  # JSON {nodes, edges}
+internode graph export --include-deleted
+internode graph schema                  # data-derived schema of the export
+internode graph schema --include-deleted
+```
+
+- The export maps 1:1 onto a `MultiDiGraph`: node key = `id`, edge key =
+  relationship `type`. Each node is `{id, labels, properties}`; each edge is
+  `{source, target, type, properties}`.
+- **Schema-agnostic by design.** Every label, relationship type, and property is
+  discovered dynamically and scoped by your `owner_id`, so future changes to the
+  OI model flow through automatically. The **only** hardcoded exclusion is the
+  raw external work-item mirror (Linear / Jira `Work*` nodes), which is already
+  mirrored into the distilled OI and so is pure duplication.
+- **Head versions only.** Version chains (identified structurally by the
+  `UPDATED_TO` relationship, independent of node type) are collapsed to their
+  live head: only the head node is exported, the `UPDATED_TO` edges are dropped,
+  and any edge that pointed at a superseded version is re-pointed to the head so
+  no relationship is lost.
+- Embedding vectors are never present and are always stripped. Soft-archived
+  nodes are excluded unless `--include-deleted`.
+- `graph schema` is derived from the **same version-collapsed graph** as the
+  export, so it describes exactly what you get: per label-set the node count and
+  observed property keys (with value types + how many nodes carry them); per
+  relationship type the count, the observed `(from)->(to)` endpoint label
+  pairings, and property types.
+- Edges to shared/global nodes that are not themselves `owner_id`-scoped (e.g.
+  CRM identity nodes reached via `RESOLVES_TO`) are omitted; the OI-side node is
+  still exported.
+- For incremental re-sync of an existing mirror, combine with `internode changes`
+  (+ the `content_hash` on `list` items) instead of re-exporting the whole graph.
+
+Example: load the export into NetworkX
+
+```python
+import json, subprocess, networkx as nx
+
+data = json.loads(subprocess.check_output(["internode", "graph", "export"]))["data"]
+g = nx.MultiDiGraph()
+for n in data["nodes"]:
+    g.add_node(n["id"], labels=n["labels"], **n["properties"])
+for e in data["edges"]:
+    g.add_edge(e["source"], e["target"], key=e["type"], **e["properties"])
 ```
 
 ### Changes (incremental change feed)

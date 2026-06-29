@@ -257,6 +257,25 @@ internode entity get <id1> [<id2> ... <idN>] [--include-deleted]
 # decisions, sub-topics; full properties for topics, intents, teams, projects,
 # statuses. Response keyed by entity ID. --include-deleted returns a minimal
 # payload for soft-deleted entities (use with the recovery workflow).
+
+internode graph export [--include-deleted]
+# Full graph dump for a local NetworkX MultiDiGraph mirror. Returns
+# {nodes:[{id,labels,properties}], edges:[{source,target,type,properties}], ...}
+# mapping 1:1 onto nx.MultiDiGraph (node key = id, edge key = relationship type).
+# Schema-agnostic: labels/rels/properties are discovered dynamically and scoped
+# by owner_id. The ONLY exclusion is the raw external work-item mirror (Linear /
+# Jira Work* nodes), already duplicated into distilled OI. Version chains
+# (UPDATED_TO) are collapsed to their live head — only the head node is exported,
+# edges to superseded versions are re-pointed to the head. Soft-archived nodes
+# excluded unless --include-deleted; vectors are never stored / always stripped.
+# Build a local mirror once, then re-sync incrementally with `internode changes`.
+
+internode graph schema [--include-deleted]
+# Derive the schema of the exported graph FROM THE SAME version-collapsed graph:
+# per label-set the node count + property keys (value types + how many nodes
+# carry them); per relationship type the count, observed (from)->(to) endpoint
+# pairings, and property types. Same exclusions as export. New labels surface
+# automatically.
 ```
 
 

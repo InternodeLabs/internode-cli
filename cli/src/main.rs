@@ -240,6 +240,29 @@ Notes:
         #[command(subcommand)]
         command: CypherCmd,
     },
+    /// Export the full OI graph (and its schema) for a local NetworkX mirror
+    #[command(after_help = "Examples:
+  internode graph export
+  internode graph export --include-deleted
+  internode graph schema
+  internode graph schema --include-deleted
+
+Notes:
+  export  – dumps every owner-scoped node + edge as JSON ({nodes, edges})
+            that maps 1:1 onto a NetworkX MultiDiGraph (node key = id,
+            edge key = relationship type). The raw external work-item mirror
+            (Linear/Jira Work* nodes) is excluded; everything else is
+            discovered dynamically. Version chains (UPDATED_TO) are collapsed
+            to their live head — only the head node is exported, and edges to
+            superseded versions are re-pointed to the head.
+  schema  – derives the graph schema (labels, relationship types, endpoint
+            pairings, per-property value types + counts) from the SAME
+            version-collapsed graph as the export. Schema-agnostic: new OI
+            labels / properties surface automatically.")]
+    Graph {
+        #[command(subcommand)]
+        command: GraphCmd,
+    },
     /// Semantic search over organizational intelligence
     Search {
         /// Search query text
@@ -1215,6 +1238,22 @@ enum EmbeddingsCmd {
 }
 
 #[derive(Subcommand)]
+enum GraphCmd {
+    /// Export the owner-scoped OI graph (nodes + edges) as JSON
+    Export {
+        /// Include soft-archived (deleted) nodes and their edges
+        #[arg(long = "include-deleted", default_value_t = false)]
+        include_deleted: bool,
+    },
+    /// Derive the schema of the exported OI graph from the live data
+    Schema {
+        /// Include soft-archived (deleted) nodes/edges in the schema
+        #[arg(long = "include-deleted", default_value_t = false)]
+        include_deleted: bool,
+    },
+}
+
+#[derive(Subcommand)]
 enum CypherCmd {
     /// Set or rotate the per-owner Cypher passphrase (min 12 chars)
     SetPassphrase,
@@ -1857,6 +1896,14 @@ async fn run(cli: Cli) -> Result<(), CliError> {
         Commands::Cypher { command } => match command {
             CypherCmd::SetPassphrase => commands::cypher::set_passphrase().await,
             CypherCmd::Run { file, dry_run } => commands::cypher::run(&file, dry_run).await,
+        },
+        Commands::Graph { command } => match command {
+            GraphCmd::Export { include_deleted } => {
+                commands::graph::export(include_deleted).await
+            }
+            GraphCmd::Schema { include_deleted } => {
+                commands::graph::schema(include_deleted).await
+            }
         },
         Commands::Search { query } => commands::search::search(&query).await,
         Commands::Context { max_tokens } => commands::context::context(max_tokens).await,

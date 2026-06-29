@@ -6,6 +6,7 @@ pub mod decisions;
 pub mod diagnose;
 pub mod embeddings;
 pub mod entity;
+pub mod graph;
 pub mod intents;
 pub mod projects;
 pub mod repair;
