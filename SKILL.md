@@ -258,6 +258,14 @@ internode entity get <id1> [<id2> ... <idN>] [--include-deleted]
 # statuses. Response keyed by entity ID. --include-deleted returns a minimal
 # payload for soft-deleted entities (use with the recovery workflow).
 
+internode changes [--since <ISO>] [--types OITopic,OIIntent,OIDecision,OITask]
+# Incremental change feed. Returns {id, type, change, at, content_hash} per
+# changed root, where change is created | updated | archived. Omit --since for
+# a FULL baseline (every live root + its content hash) — so a fresh consumer
+# can seed its manifest in one call. With --since, you get only the delta.
+# Use this instead of downloading the whole graph: persist content_hash per
+# entity and diff it on the next run to find exactly what changed.
+
 internode graph export [--include-deleted]
 # Full graph dump for a local NetworkX MultiDiGraph mirror. Returns
 # {nodes:[{id,labels,properties}], edges:[{source,target,type,properties}], ...}
